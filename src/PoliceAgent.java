@@ -27,6 +27,11 @@ public class PoliceAgent extends Agent {
         System.out.println("  Assigned Zone: " + zone);
         System.out.println("  Status: ON DUTY");
         
+        // Update visualization
+        VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+            "Patrolling " + zone, true);
+        VisualizationHelper.log("👮 " + getLocalName() + " on patrol in " + zone);
+        
         // Register with DF
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());
@@ -43,9 +48,23 @@ public class PoliceAgent extends Agent {
         addBehaviour(new PatrolBehaviour(this, 20000));
         addBehaviour(new RespondToIncidents());
         addBehaviour(new MonitorTraffic(this, 30000));
+        addBehaviour(new UpdateVisualization(this, 2000));
     }
     
-    // Regular patrol behavior
+    // Periodic visualization update
+    class UpdateVisualization extends TickerBehaviour {
+        public UpdateVisualization(Agent a, long period) {
+            super(a, period);
+        }
+        
+        public void onTick() {
+            String status = currentIncident == null ? 
+                "Patrolling " + zone : "Handling: " + currentIncident;
+            VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                status, currentIncident == null);
+        }
+    }
+    
     class PatrolBehaviour extends TickerBehaviour {
         private String[] patrolLocations;
         private int currentPatrolIndex = 0;
@@ -67,12 +86,14 @@ public class PoliceAgent extends Agent {
                 System.out.println("[" + getLocalName() + "] 🚓 Patrolling " + 
                                  currentLocation + " - All clear");
                 
+                VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                    "Patrolling", true);
+                
                 currentPatrolIndex = (currentPatrolIndex + 1) % patrolLocations.length;
             }
         }
     }
     
-    // Respond to incidents from TCC
     class RespondToIncidents extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
@@ -105,7 +126,6 @@ public class PoliceAgent extends Agent {
     
     private void handleIncident(String type, String location, AID sender) {
         if (currentIncident != null) {
-            // Busy with another incident
             ACLMessage reply = new ACLMessage(ACLMessage.REFUSE);
             reply.addReceiver(sender);
             reply.setContent("BUSY:" + currentIncident);
@@ -121,13 +141,15 @@ public class PoliceAgent extends Agent {
         System.out.println("  Location: " + location);
         System.out.println("  Current Location: " + currentLocation);
         
-        // Confirm response
+        VisualizationHelper.log("🚨 " + getLocalName() + " responding to " + type + " at " + location);
+        VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+            "Responding: " + type, false);
+        
         ACLMessage confirm = new ACLMessage(ACLMessage.AGREE);
         confirm.addReceiver(sender);
         confirm.setContent("RESPONDING:" + type);
         send(confirm);
         
-        // Simulate travel to incident
         addBehaviour(new OneShotBehaviour() {
             public void action() {
                 try {
@@ -135,14 +157,18 @@ public class PoliceAgent extends Agent {
                     System.out.println("[" + getLocalName() + "] Arrived at incident scene: " + location);
                     currentLocation = location;
                     
-                    // Simulate handling incident
+                    VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                        "At scene: " + type, false);
+                    
                     Thread.sleep(5000);
                     
                     incidentsResolved++;
                     System.out.println("[" + getLocalName() + "] ✓ Incident resolved: " + type);
                     System.out.println("  Total incidents resolved: " + incidentsResolved);
                     
-                    // Inform TCC
+                    VisualizationHelper.log("✓ " + getLocalName() + " incident resolved (" + 
+                                          incidentsResolved + " total)");
+                    
                     ACLMessage report = new ACLMessage(ACLMessage.INFORM);
                     report.addReceiver(sender);
                     report.setContent("INCIDENT_RESOLVED:" + type + ":" + location);
@@ -150,6 +176,9 @@ public class PoliceAgent extends Agent {
                     
                     currentIncident = null;
                     System.out.println("[" + getLocalName() + "] Returning to patrol\n");
+                    
+                    VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                        "Returning to patrol", true);
                     
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -162,12 +191,19 @@ public class PoliceAgent extends Agent {
         System.out.println("[" + getLocalName() + "] 🚑 Assisting emergency vehicle " + emergencyId);
         System.out.println("  Clearing traffic and securing route");
         
-        // Simulate assistance
+        VisualizationHelper.log("🚑 " + getLocalName() + " assisting emergency vehicle " + emergencyId);
+        VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+            "Assisting Emergency", false);
+        
         addBehaviour(new OneShotBehaviour() {
             public void action() {
                 try {
                     Thread.sleep(4000);
                     System.out.println("[" + getLocalName() + "] Emergency route secured for " + emergencyId);
+                    
+                    VisualizationHelper.log("✓ " + getLocalName() + " route secured");
+                    VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                        "Patrolling", true);
                 } catch (Exception e) {}
             }
         });
@@ -176,17 +212,24 @@ public class PoliceAgent extends Agent {
     private void controlTraffic(String location) {
         System.out.println("[" + getLocalName() + "] 🚦 Managing traffic at " + location);
         
+        VisualizationHelper.log("🚦 " + getLocalName() + " managing traffic at " + location);
+        VisualizationHelper.updateAgent(getLocalName(), "police", location,
+            "Traffic Control", false);
+        
         addBehaviour(new OneShotBehaviour() {
             public void action() {
                 try {
                     Thread.sleep(3000);
                     System.out.println("[" + getLocalName() + "] Traffic flow restored at " + location);
+                    
+                    VisualizationHelper.log("✓ " + getLocalName() + " traffic flow restored");
+                    VisualizationHelper.updateAgent(getLocalName(), "police", currentLocation,
+                        "Patrolling", true);
                 } catch (Exception e) {}
             }
         });
     }
     
-    // Monitor traffic conditions
     class MonitorTraffic extends TickerBehaviour {
         public MonitorTraffic(Agent a, long period) {
             super(a, period);
@@ -194,7 +237,6 @@ public class PoliceAgent extends Agent {
         
         public void onTick() {
             if (currentIncident == null) {
-                // Randomly detect traffic issues
                 if (Math.random() > 0.85) {
                     String[] issues = {"congestion", "accident", "breakdown"};
                     String issue = issues[(int)(Math.random() * issues.length)];
@@ -202,7 +244,8 @@ public class PoliceAgent extends Agent {
                     System.out.println("[" + getLocalName() + "] ⚠️ Traffic " + issue + 
                                      " detected in " + zone);
                     
-                    // Report to TCC
+                    VisualizationHelper.log("⚠️ " + getLocalName() + " detected traffic " + issue);
+                    
                     reportToTCC(issue);
                 }
             }
@@ -210,7 +253,6 @@ public class PoliceAgent extends Agent {
     }
     
     private void reportToTCC(String issue) {
-        // Find TCC and report
         DFAgentDescription template = new DFAgentDescription();
         ServiceDescription sd = new ServiceDescription();
         sd.setType("traffic-control");
@@ -237,5 +279,7 @@ public class PoliceAgent extends Agent {
         } catch (Exception e) {}
         System.out.println("\n👮 Police Unit " + getAID().getLocalName() + " off duty.");
         System.out.println("  Total incidents resolved: " + incidentsResolved);
+        
+        VisualizationHelper.log("👮 " + getLocalName() + " off duty (" + incidentsResolved + " incidents resolved)");
     }
 }

@@ -1,5 +1,4 @@
 import jade.core.Agent;
-//import jade.core.AID;
 import jade.core.behaviours.*;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
@@ -8,7 +7,7 @@ import jade.domain.FIPAAgentManagement.*;
 import java.util.*;
 
 public class AmbulanceAgent extends Agent {
-    private String equipmentLevel; // basic, advanced, micu
+    private String equipmentLevel;
     private String currentLocation;
     private boolean available = true;
     private String currentEmergency = null;
@@ -32,6 +31,11 @@ public class AmbulanceAgent extends Agent {
         System.out.println("  Equipment: " + equipment);
         System.out.println("  Location: " + currentLocation);
         
+        // Update visualization
+        VisualizationHelper.updateAgent(getLocalName(), "ambulance", currentLocation, 
+            "Ready - " + equipmentLevel, available);
+        VisualizationHelper.log("🚑 " + getLocalName() + " ready at " + currentLocation + " (" + equipmentLevel + ")");
+        
         // Register with DF
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());
@@ -48,6 +52,7 @@ public class AmbulanceAgent extends Agent {
         addBehaviour(new RespondToEmergencies());
         addBehaviour(new HandleAssignment());
         addBehaviour(new ReceiveDestination());
+        addBehaviour(new UpdateVisualization(this, 2000));
     }
     
     private void initializeEquipment() {
@@ -82,7 +87,7 @@ public class AmbulanceAgent extends Agent {
                 equipmentScores.put("general", 75);
                 break;
                 
-            case "micu": // Mobile Intensive Care Unit - BEST
+            case "micu":
                 equipment.add("Full ICU Equipment");
                 equipment.add("Advanced Defibrillator");
                 equipment.add("Ventilator");
@@ -101,7 +106,19 @@ public class AmbulanceAgent extends Agent {
         }
     }
     
-    // Respond to emergency calls
+    // Periodic visualization update
+    class UpdateVisualization extends TickerBehaviour {
+        public UpdateVisualization(Agent a, long period) {
+            super(a, period);
+        }
+        
+        public void onTick() {
+            String status = available ? "Available - " + equipmentLevel : "On Mission: " + currentEmergency;
+            VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
+                currentLocation, status, available);
+        }
+    }
+    
     class RespondToEmergencies extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -117,10 +134,8 @@ public class AmbulanceAgent extends Agent {
                     String severity = parts[3];
                     String location = parts[4];
                     
-                    // Calculate suitability score
                     int score = calculateScore(type, severity, location);
                     
-                    // Send proposal
                     ACLMessage proposal = msg.createReply();
                     proposal.setPerformative(ACLMessage.PROPOSE);
                     proposal.setContent(emergencyId + ":" + score + ":" + equipmentLevel);
@@ -128,8 +143,8 @@ public class AmbulanceAgent extends Agent {
                     
                     System.out.println(getLocalName() + " proposing for " + emergencyId + 
                                      " with score: " + score);
+                    VisualizationHelper.log("💭 " + getLocalName() + " proposing for " + emergencyId + " (score: " + score + ")");
                 } else {
-                    // Send refuse
                     ACLMessage refuse = msg.createReply();
                     refuse.setPerformative(ACLMessage.REFUSE);
                     refuse.setContent("BUSY");
@@ -144,18 +159,15 @@ public class AmbulanceAgent extends Agent {
     private int calculateScore(String type, String severity, String location) {
         int baseScore = equipmentScores.getOrDefault(type, 50);
         
-        // Adjust for severity
         if (severity.equals("critical")) {
             baseScore += 20;
         } else if (severity.equals("high")) {
             baseScore += 10;
         }
         
-        // Distance factor (simulate)
         int distance = Math.abs(currentLocation.hashCode() - location.hashCode()) % 10;
         int distanceScore = Math.max(0, 20 - distance * 2);
         
-        // Availability bonus
         if (available) {
             baseScore += 15;
         }
@@ -163,7 +175,6 @@ public class AmbulanceAgent extends Agent {
         return Math.min(100, baseScore + distanceScore);
     }
     
-    // Handle assignment acceptance/rejection
     class HandleAssignment extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -187,6 +198,10 @@ public class AmbulanceAgent extends Agent {
                     System.out.println("Equipment: " + equipmentLevel);
                     System.out.println("Heading to: " + targetLocation);
                     
+                    VisualizationHelper.log("🚨 " + getLocalName() + " DISPATCHED to " + targetLocation);
+                    VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
+                        currentLocation, "En route to " + targetLocation, false);
+                    
                     // Simulate travel
                     addBehaviour(new OneShotBehaviour() {
                         public void action() {
@@ -194,6 +209,10 @@ public class AmbulanceAgent extends Agent {
                                 Thread.sleep(3000);
                                 System.out.println(getLocalName() + " arrived at scene: " + targetLocation);
                                 currentLocation = targetLocation;
+                                
+                                VisualizationHelper.log("✓ " + getLocalName() + " arrived at scene");
+                                VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
+                                    currentLocation, "At scene: " + currentEmergency, false);
                             } catch (Exception e) {}
                         }
                     });
@@ -204,7 +223,6 @@ public class AmbulanceAgent extends Agent {
         }
     }
     
-    // Receive hospital destination
     class ReceiveDestination extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
@@ -216,6 +234,9 @@ public class AmbulanceAgent extends Agent {
                     String hospital = content.split(":")[1];
                     
                     System.out.println(getLocalName() + " transporting patient to " + hospital);
+                    VisualizationHelper.log("🏥 " + getLocalName() + " transporting patient to " + hospital);
+                    VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
+                        currentLocation, "Transporting to " + hospital, false);
                     
                     // Simulate transport
                     addBehaviour(new OneShotBehaviour() {
@@ -225,10 +246,15 @@ public class AmbulanceAgent extends Agent {
                                 System.out.println(getLocalName() + " arrived at " + hospital);
                                 System.out.println("Patient delivered successfully!");
                                 
-                                // Reset status
                                 available = true;
                                 currentEmergency = null;
+                                currentLocation = "Station1"; // Return to station
+                                
                                 System.out.println(getLocalName() + " returning to station and available again\n");
+                                
+                                VisualizationHelper.log("✓ " + getLocalName() + " patient delivered, returning to base");
+                                VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
+                                    currentLocation, "Available at station", true);
                             } catch (Exception e) {}
                         }
                     });
@@ -244,5 +270,6 @@ public class AmbulanceAgent extends Agent {
             DFService.deregister(this);
         } catch (Exception e) {}
         System.out.println("Ambulance " + getAID().getLocalName() + " terminating.");
+        VisualizationHelper.log("🚑 " + getLocalName() + " offline");
     }
 }

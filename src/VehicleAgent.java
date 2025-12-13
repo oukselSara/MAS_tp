@@ -6,10 +6,10 @@ import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.*;
 
 public class VehicleAgent extends Agent {
-    private String vehicleType; // regular, emergency
+    private String vehicleType;
     private String currentLocation;
     private String destination;
-    private int speed = 50; // km/h
+    private int speed = 50;
     private boolean moving = true;
     private String vehicleId;
     
@@ -30,13 +30,18 @@ public class VehicleAgent extends Agent {
         System.out.println("  Heading to: " + destination);
         System.out.println("  Speed: " + speed + " km/h");
         
-        // Register with DF if needed
+        // Update visualization
+        VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+            "En route to " + destination, true);
+        VisualizationHelper.log("🚗 " + vehicleId + " on road");
+        
         if (!vehicleType.equals("regular")) {
             registerWithDF();
         }
         
         addBehaviour(new DriveToDestination(this));
         addBehaviour(new HandleTrafficSignals());
+        addBehaviour(new UpdateVisualization(this, 2000));
     }
     
     private void registerWithDF() {
@@ -53,28 +58,48 @@ public class VehicleAgent extends Agent {
         }
     }
     
-    // Main driving behavior
+    // Periodic visualization update
+    class UpdateVisualization extends TickerBehaviour {
+        public UpdateVisualization(Agent a, long period) {
+            super(a, period);
+        }
+        
+        public void onTick() {
+            String status = moving ? "Moving (" + speed + " km/h)" : "Stopped";
+            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                status, moving);
+        }
+    }
+    
     class DriveToDestination extends TickerBehaviour {
         public DriveToDestination(Agent a) {
-            super(a, 10000); // Update every 10 seconds
+            super(a, 10000);
         }
         
         public void onTick() {
             if (!currentLocation.equals(destination) && moving) {
-                // Simulate movement
                 System.out.println("[" + vehicleId + "] Driving: " + currentLocation + 
                                  " → " + destination + " (Speed: " + speed + " km/h)");
                 
-                // Randomly reach destination
+                VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                    "Driving to " + destination, true);
+                
                 if (Math.random() > 0.6) {
                     currentLocation = destination;
                     System.out.println("[" + vehicleId + "] ✓ Arrived at " + destination);
                     
-                    // Wait a bit, then set new destination
+                    VisualizationHelper.log("📍 " + vehicleId + " arrived at " + destination);
+                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                        "Arrived", false);
+                    
                     addBehaviour(new WakerBehaviour(myAgent, 5000) {
                         protected void onWake() {
                             destination = "Location" + (int)(Math.random() * 10);
                             System.out.println("[" + vehicleId + "] New destination: " + destination);
+                            
+                            VisualizationHelper.log("🗺️ " + vehicleId + " new destination: " + destination);
+                            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                                "Planning route to " + destination, true);
                         }
                     });
                 }
@@ -82,7 +107,6 @@ public class VehicleAgent extends Agent {
         }
     }
     
-    // Handle traffic signals and priority vehicles
     class HandleTrafficSignals extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
@@ -96,22 +120,34 @@ public class VehicleAgent extends Agent {
                     speed = 0;
                     System.out.println("[" + vehicleId + "] 🔴 STOPPED at traffic light");
                     
+                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                        "Stopped - Red Light", false);
+                    
                 } else if (content.startsWith("GO")) {
                     moving = true;
                     speed = 50;
                     System.out.println("[" + vehicleId + "] 🟢 MOVING");
+                    
+                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                        "Moving", true);
                     
                 } else if (content.startsWith("YIELD_EMERGENCY")) {
                     moving = false;
                     speed = 0;
                     System.out.println("[" + vehicleId + "] 🚑 YIELDING to emergency vehicle");
                     
-                    // Resume after emergency passes
+                    VisualizationHelper.log("🚑 " + vehicleId + " yielding to emergency vehicle");
+                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                        "YIELDING to Emergency", false);
+                    
                     addBehaviour(new WakerBehaviour(myAgent, 8000) {
                         protected void onWake() {
                             moving = true;
                             speed = 50;
                             System.out.println("[" + vehicleId + "] Resuming normal speed");
+                            
+                            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
+                                "Resuming", true);
                         }
                     });
                 }
@@ -128,5 +164,6 @@ public class VehicleAgent extends Agent {
             }
         } catch (Exception e) {}
         System.out.println("Vehicle " + vehicleId + " terminating.");
+        VisualizationHelper.log("🚗 " + vehicleId + " offline");
     }
 }

@@ -15,6 +15,10 @@ public class TrafficControlCenter extends Agent {
     protected void setup() {
         System.out.println("Traffic Control Center " + getAID().getName() + " is ready.");
         
+        // Update visualization
+        VisualizationHelper.updateAgent("TCC", "tcc", "ControlCenter", "Monitoring Traffic", true);
+        VisualizationHelper.log("🎛 Traffic Control Center online");
+        
         // Register with DF
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());
@@ -28,14 +32,25 @@ public class TrafficControlCenter extends Agent {
             e.printStackTrace();
         }
         
-        // Add behaviors
         addBehaviour(new EmergencyHandler());
         addBehaviour(new TrafficMonitor(this, 15000));
         addBehaviour(new AmbulanceResponseHandler());
         addBehaviour(new HospitalResponseHandler());
+        addBehaviour(new UpdateVisualization(this, 2000));
     }
     
-    // Handle emergency requests
+    // Periodic visualization update
+    class UpdateVisualization extends TickerBehaviour {
+        public UpdateVisualization(Agent a, long period) {
+            super(a, period);
+        }
+        
+        public void onTick() {
+            String status = "Monitoring - " + activeEmergencies.size() + " active emergencies";
+            VisualizationHelper.updateAgent("TCC", "tcc", "ControlCenter", status, true);
+        }
+    }
+    
     class EmergencyHandler extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
@@ -67,13 +82,16 @@ public class TrafficControlCenter extends Agent {
             EmergencyInfo emergency = new EmergencyInfo(emergencyId, type, severity, location);
             activeEmergencies.put(emergencyId, emergency);
             
-            // Request ambulance proposals
+            // Update visualization
+            VisualizationHelper.addEmergency(emergencyId, type, location);
+            VisualizationHelper.log("🚨 NEW EMERGENCY #" + emergencyCounter + ": " + type + 
+                                  " (" + severity + ") at " + location);
+            
             findBestAmbulance(emergency);
         }
     }
     
     private void findBestAmbulance(EmergencyInfo emergency) {
-        // Search for ambulances
         DFAgentDescription template = new DFAgentDescription();
         ServiceDescription sd = new ServiceDescription();
         sd.setType("ambulance");
@@ -83,7 +101,6 @@ public class TrafficControlCenter extends Agent {
             DFAgentDescription[] result = DFService.search(this, template);
             System.out.println("Found " + result.length + " ambulances");
             
-            // Send CFP to all ambulances
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             for (DFAgentDescription dfd : result) {
                 cfp.addReceiver(dfd.getName());
@@ -95,12 +112,13 @@ public class TrafficControlCenter extends Agent {
             cfp.setReplyWith("cfp" + System.currentTimeMillis());
             send(cfp);
             
+            VisualizationHelper.log("📢 Broadcasting ambulance request for " + emergency.id);
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
     
-    // Handle ambulance proposals
     class AmbulanceResponseHandler extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -119,7 +137,6 @@ public class TrafficControlCenter extends Agent {
                     emergency.ambulanceProposals.add(new AmbulanceProposal(
                         msg.getSender(), score, equipment));
                     
-                    // Wait a bit for all proposals, then select best
                     if (emergency.ambulanceProposals.size() >= 2) {
                         selectBestAmbulance(emergency);
                     }
@@ -144,7 +161,6 @@ public class TrafficControlCenter extends Agent {
             emergency.ambulanceAssigned = true;
             emergency.selectedAmbulance = best.ambulance;
             
-            // Accept best ambulance
             ACLMessage accept = new ACLMessage(ACLMessage.ACCEPT_PROPOSAL);
             accept.addReceiver(best.ambulance);
             accept.setContent(emergency.id + ":" + emergency.location);
@@ -154,7 +170,10 @@ public class TrafficControlCenter extends Agent {
             System.out.println("Selected ambulance: " + best.ambulance.getLocalName() + 
                              " (Score: " + best.score + ", Equipment: " + best.equipment + ")");
             
-            // Reject others
+            VisualizationHelper.log("✓ Ambulance selected: " + best.ambulance.getLocalName() + 
+                                  " (score: " + best.score + ", " + best.equipment + ")");
+            VisualizationHelper.updateEmergency(emergency.id, "Ambulance dispatched");
+            
             for (AmbulanceProposal prop : emergency.ambulanceProposals) {
                 if (!prop.ambulance.equals(best.ambulance)) {
                     ACLMessage reject = new ACLMessage(ACLMessage.REJECT_PROPOSAL);
@@ -165,10 +184,7 @@ public class TrafficControlCenter extends Agent {
                 }
             }
             
-            // Clear traffic path
             clearTrafficPath(emergency.location);
-            
-            // Find best hospital
             findBestHospital(emergency);
         }
     }
@@ -193,12 +209,13 @@ public class TrafficControlCenter extends Agent {
             cfp.setReplyWith("hospital-cfp" + System.currentTimeMillis());
             send(cfp);
             
+            VisualizationHelper.log("📢 Broadcasting hospital request for " + emergency.id);
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
     
-    // Handle hospital proposals
     class HospitalResponseHandler extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -249,13 +266,15 @@ public class TrafficControlCenter extends Agent {
             System.out.println("Selected hospital: " + best.hospital.getLocalName() + 
                              " (Capability: " + best.capability + ")");
             
-            // Notify ambulance of hospital destination
+            VisualizationHelper.log("✓ Hospital selected: " + best.hospital.getLocalName() + 
+                                  " (capability: " + best.capability + ")");
+            VisualizationHelper.updateEmergency(emergency.id, "Hospital assigned");
+            
             ACLMessage inform = new ACLMessage(ACLMessage.INFORM);
             inform.addReceiver(emergency.selectedAmbulance);
             inform.setContent("DESTINATION:" + best.hospital.getLocalName());
             send(inform);
             
-            // Reject other hospitals
             for (HospitalProposal prop : emergency.hospitalProposals) {
                 if (!prop.hospital.equals(best.hospital)) {
                     ACLMessage reject = new ACLMessage(ACLMessage.REJECT_PROPOSAL);
@@ -265,11 +284,19 @@ public class TrafficControlCenter extends Agent {
                     send(reject);
                 }
             }
+            
+            // Schedule emergency removal after completion
+            addBehaviour(new WakerBehaviour(this, 15000) {
+                protected void onWake() {
+                    activeEmergencies.remove(emergency.id);
+                    VisualizationHelper.removeEmergency(emergency.id);
+                    VisualizationHelper.log("✅ Emergency " + emergency.id + " RESOLVED");
+                }
+            });
         }
     }
     
     private void clearTrafficPath(String location) {
-        // Send priority messages to traffic lights
         DFAgentDescription template = new DFAgentDescription();
         ServiceDescription sd = new ServiceDescription();
         sd.setType("traffic-light");
@@ -285,12 +312,12 @@ public class TrafficControlCenter extends Agent {
             send(msg);
             
             System.out.println("Traffic path cleared for emergency route");
+            VisualizationHelper.log("🚦 Traffic path cleared for emergency route");
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
     
-    // Monitor traffic periodically
     class TrafficMonitor extends TickerBehaviour {
         public TrafficMonitor(Agent a, long period) {
             super(a, period);
@@ -311,10 +338,10 @@ public class TrafficControlCenter extends Agent {
             DFService.deregister(this);
         } catch (Exception e) {}
         System.out.println("Traffic Control Center terminating.");
+        VisualizationHelper.log("🎛 Traffic Control Center offline");
     }
 }
 
-// Helper classes
 class EmergencyInfo {
     String id;
     String type;

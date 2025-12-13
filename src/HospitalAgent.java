@@ -8,7 +8,7 @@ import java.util.*;
 
 public class HospitalAgent extends Agent {
     private String hospitalName;
-    private String capabilityLevel; // low, medium, high
+    private String capabilityLevel;
     private int capacity;
     private int currentPatients = 0;
     private Map<String, Doctor> doctors;
@@ -37,6 +37,11 @@ public class HospitalAgent extends Agent {
         System.out.println("Departments: " + departments);
         System.out.println("Doctors: " + doctors.size());
         
+        // Update visualization
+        VisualizationHelper.updateAgent(getLocalName(), "hospital", hospitalName, 
+            "Capacity: 0/" + capacity, true, capacity, 0);
+        VisualizationHelper.log("🏥 " + hospitalName + " initialized (" + capabilityLevel + " - " + capacity + " beds)");
+        
         // Register with DF
         DFAgentDescription dfd = new DFAgentDescription();
         dfd.setName(getAID());
@@ -52,6 +57,7 @@ public class HospitalAgent extends Agent {
         
         addBehaviour(new RespondToPatientRequests());
         addBehaviour(new HandlePatientAdmission());
+        addBehaviour(new UpdateVisualization(this, 3000));
     }
     
     private void initializeHospital() {
@@ -103,7 +109,7 @@ public class HospitalAgent extends Agent {
                 specialtyScores.put("general", 75);
                 break;
                 
-            case "high": // ELITE/PERFECT HOSPITAL
+            case "high":
                 departments.add("Advanced Trauma Center");
                 departments.add("Cardiac Center of Excellence");
                 departments.add("Neurosurgery Department");
@@ -121,7 +127,6 @@ public class HospitalAgent extends Agent {
                 equipment.add("Complete Laboratory");
                 equipment.add("Blood Bank");
                 
-                // BEST DOCTORS
                 doctors.put("Dr. Anderson", new Doctor("Dr. Anderson", "Trauma Surgery", 98));
                 doctors.put("Dr. Martinez", new Doctor("Dr. Martinez", "Cardiology", 99));
                 doctors.put("Dr. Taylor", new Doctor("Dr. Taylor", "Neurosurgery", 97));
@@ -138,7 +143,19 @@ public class HospitalAgent extends Agent {
         }
     }
     
-    // Respond to patient requests
+    // Periodic visualization update
+    class UpdateVisualization extends TickerBehaviour {
+        public UpdateVisualization(Agent a, long period) {
+            super(a, period);
+        }
+        
+        public void onTick() {
+            VisualizationHelper.updateAgent(getLocalName(), "hospital", hospitalName,
+                "Patients: " + currentPatients + "/" + capacity,
+                currentPatients < capacity, capacity, currentPatients);
+        }
+    }
+    
     class RespondToPatientRequests extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -162,6 +179,7 @@ public class HospitalAgent extends Agent {
                     
                     System.out.println(hospitalName + " proposing with capability: " + 
                                      capabilityScore + " for " + type + " emergency");
+                    VisualizationHelper.log("💭 " + hospitalName + " proposing (capability: " + capabilityScore + ")");
                 } else {
                     ACLMessage refuse = msg.createReply();
                     refuse.setPerformative(ACLMessage.REFUSE);
@@ -169,6 +187,7 @@ public class HospitalAgent extends Agent {
                     send(refuse);
                     
                     System.out.println(hospitalName + " at full capacity");
+                    VisualizationHelper.log("⚠️ " + hospitalName + " at full capacity");
                 }
             } else {
                 block();
@@ -179,19 +198,16 @@ public class HospitalAgent extends Agent {
     private int calculateCapability(String type, String severity) {
         int baseScore = specialtyScores.getOrDefault(type, 50);
         
-        // Severity adjustment
         if (severity.equals("critical")) {
             baseScore += 10;
         } else if (severity.equals("high")) {
             baseScore += 5;
         }
         
-        // Capacity bonus
         if (currentPatients < capacity / 2) {
             baseScore += 10;
         }
         
-        // Find best doctor for this case
         Doctor bestDoctor = findBestDoctor(type);
         if (bestDoctor != null) {
             baseScore += (bestDoctor.skillLevel / 10);
@@ -225,7 +241,6 @@ public class HospitalAgent extends Agent {
         return false;
     }
     
-    // Handle patient admission
     class HandlePatientAdmission extends CyclicBehaviour {
         public void action() {
             MessageTemplate mt = MessageTemplate.and(
@@ -251,16 +266,23 @@ public class HospitalAgent extends Agent {
                     System.out.println("Type: " + type);
                     System.out.println("Severity: " + severity);
                     
-                    // Assign best doctor
                     Doctor assignedDoctor = findBestDoctor(type);
                     if (assignedDoctor != null) {
                         assignedDoctor.isAvailable = false;
                         System.out.println("Assigned Doctor: " + assignedDoctor.name + 
                                          " (" + assignedDoctor.specialty + 
                                          ", Skill Level: " + assignedDoctor.skillLevel + ")");
+                        VisualizationHelper.log("🏥 " + hospitalName + " ACCEPTING PATIENT - Dr. " + 
+                                              assignedDoctor.name + " assigned");
+                    } else {
+                        VisualizationHelper.log("🏥 " + hospitalName + " ACCEPTING PATIENT");
                     }
                     
                     System.out.println("Current Patients: " + currentPatients + "/" + capacity);
+                    
+                    VisualizationHelper.updateAgent(getLocalName(), "hospital", hospitalName,
+                        "Treating: " + currentPatients + "/" + capacity,
+                        currentPatients < capacity, capacity, currentPatients);
                     
                     // Simulate treatment
                     addBehaviour(new OneShotBehaviour() {
@@ -274,6 +296,11 @@ public class HospitalAgent extends Agent {
                                 }
                                 System.out.println("Patient discharged. Current patients: " + 
                                                  currentPatients + "/" + capacity + "\n");
+                                
+                                VisualizationHelper.log("✓ " + hospitalName + " patient discharged");
+                                VisualizationHelper.updateAgent(getLocalName(), "hospital", hospitalName,
+                                    "Available: " + currentPatients + "/" + capacity,
+                                    true, capacity, currentPatients);
                             } catch (Exception e) {}
                         }
                     });
@@ -289,14 +316,14 @@ public class HospitalAgent extends Agent {
             DFService.deregister(this);
         } catch (Exception e) {}
         System.out.println("Hospital " + hospitalName + " terminating.");
+        VisualizationHelper.log("🏥 " + hospitalName + " offline");
     }
 }
 
-// Doctor class
 class Doctor {
     String name;
     String specialty;
-    int skillLevel; // 0-100
+    int skillLevel;
     boolean isAvailable = true;
     
     Doctor(String name, String specialty, int skillLevel) {

@@ -1,11 +1,10 @@
 import jade.core.Agent;
 import jade.core.behaviours.*;
 import jade.lang.acl.ACLMessage;
-//import jade.lang.acl.MessageTemplate;
 import jade.domain.DFService;
 import jade.domain.FIPAAgentManagement.*;
 
-class EmergencyGenerator extends Agent {
+public class EmergencyGenerator extends Agent {
     private String[] emergencyTypes = {"cardiac", "trauma", "respiratory", "neurological", "general"};
     private String[] severities = {"low", "medium", "high", "critical"};
     private String[] locations = {"Downtown", "Suburb_A", "Industrial_Zone", "ResidentialArea", "Highway_Exit"};
@@ -14,6 +13,9 @@ class EmergencyGenerator extends Agent {
     protected void setup() {
         System.out.println("Emergency Generator started - Will generate emergencies periodically");
         
+        // Update visualization
+        VisualizationHelper.log("⚠️ Emergency Generator activated");
+        
         // Generate emergencies every 25 seconds
         addBehaviour(new TickerBehaviour(this, 25000) {
             protected void onTick() {
@@ -21,7 +23,7 @@ class EmergencyGenerator extends Agent {
             }
         });
         
-        // Generate first emergency immediately
+        // Generate first emergency immediately (after 5 seconds)
         addBehaviour(new OneShotBehaviour() {
             public void action() {
                 try {
@@ -46,6 +48,11 @@ class EmergencyGenerator extends Agent {
         System.out.println("║ Location: " + location);
         System.out.println("╚════════════════════════════════════════════╝\n");
         
+        // Update visualization
+        String emergencyId = "EMG" + emergencyCount;
+        VisualizationHelper.log("⚠️ EMERGENCY #" + emergencyCount + ": " + type + 
+                              " (" + severity + ") at " + location);
+        
         // Find TCC and send emergency
         DFAgentDescription template = new DFAgentDescription();
         ServiceDescription sd = new ServiceDescription();
@@ -67,5 +74,7 @@ class EmergencyGenerator extends Agent {
     
     protected void takeDown() {
         System.out.println("Emergency Generator terminating.");
+        System.out.println("Total emergencies generated: " + emergencyCount);
+        VisualizationHelper.log("⚠️ Emergency Generator offline - " + emergencyCount + " emergencies generated");
     }
 }
