@@ -2,14 +2,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Helper class for agents to update the visualization GUI
+ * Helper class for agents to update the visualization GUI with coordination tracking
  */
 public class VisualizationHelper {
     private static final Map<String, Double> LOCATION_X = new HashMap<>();
     private static final Map<String, Double> LOCATION_Y = new HashMap<>();
     
     static {
-        // Initialize location coordinates
         initializeLocations();
     }
     
@@ -53,6 +52,10 @@ public class VisualizationHelper {
         LOCATION_X.put("Zone2", 700.0);
         LOCATION_Y.put("Zone2", 500.0);
         
+        // Control Center
+        LOCATION_X.put("ControlCenter", 450.0);
+        LOCATION_Y.put("ControlCenter", 150.0);
+        
         // Numbered locations
         for (int i = 0; i <= 9; i++) {
             int col = i % 5;
@@ -94,11 +97,27 @@ public class VisualizationHelper {
     }
     
     /**
-     * Add log message to visualization
+     * Add log message to visualization - now tracks coordination events
      */
     public static void log(String message) {
         try {
-            TrafficSystemVisualization.getInstance().addLog(message);
+            TrafficSystemVisualization gui = TrafficSystemVisualization.getInstance();
+            
+            // Add prefix for better categorization
+            String prefix = "";
+            if (message.contains("EMERGENCY") || message.contains("Emergency")) {
+                prefix = "[EMERGENCY] ";
+            } else if (message.contains("DISPATCHED") || message.contains("selected")) {
+                prefix = "[DISPATCH] ";
+            } else if (message.contains("PRIORITY") || message.contains("Priority")) {
+                prefix = "[TRAFFIC-CTRL] ";
+            } else if (message.contains("patrol") || message.contains("Police")) {
+                prefix = "[COORDINATION] ";
+            } else if (message.contains("arrived") || message.contains("delivered")) {
+                prefix = "[STATUS] ";
+            }
+            
+            gui.addLog(prefix + message);
         } catch (Exception e) {
             // GUI might not be initialized yet
         }
@@ -113,6 +132,9 @@ public class VisualizationHelper {
             Double x = LOCATION_X.getOrDefault(location, 400.0);
             Double y = LOCATION_Y.getOrDefault(location, 400.0);
             gui.addEmergency(id, type, location, x, y);
+            
+            // Log emergency with coordination protocol
+            log("NEW EMERGENCY " + id + ": " + type + " at " + location + " - Initiating multi-agent coordination");
         } catch (Exception e) {
             // GUI might not be initialized yet
         }
@@ -130,11 +152,63 @@ public class VisualizationHelper {
     }
     
     /**
+     * Update coordination info for an emergency
+     */
+    public static void updateCoordination(String emergencyId, String ambulanceName, 
+                                         String hospitalName, int policeUnits, int trafficLights) {
+        try {
+            TrafficSystemVisualization gui = TrafficSystemVisualization.getInstance();
+            gui.updateCoordination(emergencyId, ambulanceName, hospitalName, policeUnits, trafficLights);
+            
+            // Log coordination update
+            log("COORDINATION UPDATE for " + emergencyId + ": " +
+                "Ambulance=" + ambulanceName + ", Hospital=" + hospitalName + 
+                ", Police=" + policeUnits + " units, Traffic=" + trafficLights + " lights");
+        } catch (Exception e) {
+            // GUI might not be initialized yet
+        }
+    }
+    
+    /**
+     * Log dispatch protocol execution
+     */
+    public static void logDispatchProtocol(String emergencyId, String protocol) {
+        try {
+            log("DISPATCH PROTOCOL [" + emergencyId + "]: " + protocol);
+        } catch (Exception e) {
+            // GUI might not be initialized yet
+        }
+    }
+    
+    /**
+     * Log traffic control action
+     */
+    public static void logTrafficControl(String action, String location) {
+        try {
+            log("TRAFFIC CONTROL: " + action + " at " + location);
+        } catch (Exception e) {
+            // GUI might not be initialized yet
+        }
+    }
+    
+    /**
+     * Log agent coordination
+     */
+    public static void logCoordination(String agent1, String agent2, String action) {
+        try {
+            log("AGENT COORDINATION: " + agent1 + " <-> " + agent2 + " - " + action);
+        } catch (Exception e) {
+            // GUI might not be initialized yet
+        }
+    }
+    
+    /**
      * Remove completed emergency
      */
     public static void removeEmergency(String id) {
         try {
             TrafficSystemVisualization.getInstance().removeEmergency(id);
+            log("Emergency " + id + " RESOLVED - Multi-agent coordination complete");
         } catch (Exception e) {
             // GUI might not be initialized yet
         }
