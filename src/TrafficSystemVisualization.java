@@ -2,24 +2,18 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.*;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TrafficSystemVisualization extends JFrame {
     private MapPanel mapPanel;
     private JTextArea logArea;
     private JPanel statsPanel;
-    private JPanel coordinationPanel;
     private Map<String, AgentInfo> agents;
     private Map<String, EmergencyStatus> emergencies;
     private static TrafficSystemVisualization instance;
     
     private int totalEmergencies = 0;
     private int resolvedEmergencies = 0;
-    private long systemStartTime;
-    private Map<String, CoordinationInfo> activeCoordinations;
-    private List<String> dispatchProtocols;
-    private Map<String, TrafficControlAction> trafficActions;
     
     public static TrafficSystemVisualization getInstance() {
         if (instance == null) {
@@ -31,241 +25,83 @@ public class TrafficSystemVisualization extends JFrame {
     private TrafficSystemVisualization() {
         agents = new ConcurrentHashMap<>();
         emergencies = new ConcurrentHashMap<>();
-        activeCoordinations = new ConcurrentHashMap<>();
-        dispatchProtocols = Collections.synchronizedList(new ArrayList<>());
-        trafficActions = new ConcurrentHashMap<>();
-        systemStartTime = System.currentTimeMillis();
         
-        setTitle("Multi-Agent Traffic & Emergency Management System - Enhanced Monitoring");
-        setSize(1900, 1050);
+        setTitle("🚦 Multi-Agent Traffic & Emergency System");
+        setSize(1500, 900);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
-        getContentPane().setBackground(new Color(240, 240, 245));
+        getContentPane().setBackground(new Color(245, 245, 250));
         
         // Top stats panel
         statsPanel = createStatsPanel();
         add(statsPanel, BorderLayout.NORTH);
         
-        // Center: Map + Right panels
-        JPanel centerContainer = new JPanel(new BorderLayout(10, 0));
-        centerContainer.setBackground(new Color(240, 240, 245));
-        centerContainer.setBorder(BorderFactory.createEmptyBorder(0, 15, 10, 15));
+        // Main content area
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBackground(new Color(245, 245, 250));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
-        // Map
+        // Map in center
         mapPanel = new MapPanel();
-        mapPanel.setPreferredSize(new Dimension(1150, 850));
-        mapPanel.setBackground(Color.WHITE);
-        mapPanel.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200), 2));
-        centerContainer.add(mapPanel, BorderLayout.CENTER);
+        mapPanel.setBackground(new Color(250, 250, 252));
+        mapPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(200, 200, 210), 2),
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        mainPanel.add(mapPanel, BorderLayout.CENTER);
         
-        // Right side with coordination and log
-        JPanel rightPanel = new JPanel(new BorderLayout(0, 10));
-        rightPanel.setPreferredSize(new Dimension(700, 850));
-        rightPanel.setBackground(new Color(240, 240, 245));
+        // Log on right
+        JPanel logPanel = new JPanel(new BorderLayout(5, 5));
+        logPanel.setBackground(new Color(245, 245, 250));
+        logPanel.setPreferredSize(new Dimension(400, 0));
         
-        // Coordination panel (top right)
-        coordinationPanel = createCoordinationPanel();
-        rightPanel.add(coordinationPanel, BorderLayout.NORTH);
+        JLabel logTitle = new JLabel("📋 Activity Log");
+        logTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        logTitle.setForeground(new Color(50, 50, 70));
+        logTitle.setBorder(BorderFactory.createEmptyBorder(5, 10, 10, 10));
+        logPanel.add(logTitle, BorderLayout.NORTH);
         
-        // Log panel (bottom right)
-        JPanel logPanel = createLogPanel();
-        rightPanel.add(logPanel, BorderLayout.CENTER);
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+        logArea.setBackground(new Color(30, 35, 45));
+        logArea.setForeground(new Color(100, 255, 150));
+        logArea.setMargin(new Insets(10, 10, 10, 10));
+        logArea.setLineWrap(true);
+        logArea.setWrapStyleWord(true);
         
-        centerContainer.add(rightPanel, BorderLayout.EAST);
-        add(centerContainer, BorderLayout.CENTER);
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 210), 2));
+        logPanel.add(scrollPane, BorderLayout.CENTER);
+        
+        mainPanel.add(logPanel, BorderLayout.EAST);
+        add(mainPanel, BorderLayout.CENTER);
         
         // Update timer
-        javax.swing.Timer timer = new javax.swing.Timer(150, e -> {
+        new javax.swing.Timer(150, e -> {
             mapPanel.repaint();
             updateStats();
-            updateCoordinationPanel();
-        });
-        timer.start();
+        }).start();
         
         setLocationRelativeTo(null);
         setVisible(true);
     }
     
     private JPanel createStatsPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBackground(new Color(240, 240, 245));
-        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 10, 15));
-        panel.setPreferredSize(new Dimension(1900, 120));
-        return panel;
-    }
-    
-    private JPanel createCoordinationPanel() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(new Color(240, 240, 245));
-        panel.setPreferredSize(new Dimension(700, 400));
-        
-        JLabel title = new JLabel("MULTI-AGENT COORDINATION & DISPATCH PROTOCOLS", SwingConstants.CENTER);
-        title.setFont(new Font("Arial", Font.BOLD, 13));
-        title.setForeground(new Color(80, 80, 80));
-        title.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        title.setAlignmentX(Component.CENTER_ALIGNMENT);
-        panel.add(title);
-        
-        return panel;
-    }
-    
-    private void updateCoordinationPanel() {
-        Component titleComp = coordinationPanel.getComponent(0);
-        coordinationPanel.removeAll();
-        coordinationPanel.add(titleComp);
-        
-        // Show active coordinations
-        if (!emergencies.isEmpty()) {
-            for (EmergencyStatus emergency : emergencies.values()) {
-                JPanel emergencyCard = createEmergencyCoordinationCard(emergency);
-                coordinationPanel.add(emergencyCard);
-                coordinationPanel.add(Box.createVerticalStrut(10));
-            }
-        } else {
-            JPanel noEmergency = new JPanel();
-            noEmergency.setBackground(Color.WHITE);
-            noEmergency.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(76, 175, 80), 2),
-                BorderFactory.createEmptyBorder(20, 20, 20, 20)
-            ));
-            noEmergency.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
-            
-            JLabel label = new JLabel("System Stable - No Active Emergencies");
-            label.setFont(new Font("Arial", Font.BOLD, 14));
-            label.setForeground(new Color(76, 175, 80));
-            noEmergency.add(label);
-            
-            coordinationPanel.add(noEmergency);
-        }
-        
-        // Show recent dispatch protocols
-        if (!dispatchProtocols.isEmpty()) {
-            coordinationPanel.add(Box.createVerticalStrut(10));
-            JPanel protocolPanel = createDispatchProtocolPanel();
-            coordinationPanel.add(protocolPanel);
-        }
-        
-        coordinationPanel.revalidate();
-        coordinationPanel.repaint();
-    }
-    
-    private JPanel createEmergencyCoordinationCard(EmergencyStatus emergency) {
-        JPanel card = new JPanel();
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(244, 67, 54), 3),
-            BorderFactory.createEmptyBorder(12, 15, 12, 15)
-        ));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
-        
-        // Emergency header
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        header.setBackground(Color.WHITE);
-        
-        JLabel idLabel = new JLabel(emergency.id);
-        idLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        idLabel.setForeground(new Color(244, 67, 54));
-        
-        JLabel typeLabel = new JLabel(emergency.type.toUpperCase() + " @ " + emergency.location);
-        typeLabel.setFont(new Font("Arial", Font.PLAIN, 12));
-        typeLabel.setForeground(new Color(100, 100, 100));
-        
-        header.add(idLabel);
-        header.add(new JLabel(" | "));
-        header.add(typeLabel);
-        card.add(header);
-        card.add(Box.createVerticalStrut(10));
-        
-        // Coordination status
-        CoordinationInfo coord = activeCoordinations.get(emergency.id);
-        if (coord != null) {
-            card.add(createCoordItem("Ambulance:", coord.ambulance, coord.ambulanceStatus));
-            card.add(createCoordItem("Hospital:", coord.hospital, coord.hospitalStatus));
-            card.add(createCoordItem("Police Support:", coord.policeUnits, coord.policeStatus));
-            card.add(createCoordItem("Traffic Control:", coord.trafficLights + " lights", coord.trafficStatus));
-        } else {
-            card.add(createCoordItem("Status:", "Dispatching units...", "INITIATING"));
-        }
-        
-        return card;
-    }
-    
-    private JPanel createCoordItem(String label, String value, String status) {
-        JPanel item = new JPanel(new BorderLayout(10, 0));
-        item.setBackground(Color.WHITE);
-        item.setMaximumSize(new Dimension(Integer.MAX_VALUE, 25));
-        
-        JLabel labelComp = new JLabel(label);
-        labelComp.setFont(new Font("Arial", Font.BOLD, 11));
-        labelComp.setForeground(new Color(80, 80, 80));
-        labelComp.setPreferredSize(new Dimension(120, 20));
-        
-        JLabel valueComp = new JLabel(value);
-        valueComp.setFont(new Font("Arial", Font.PLAIN, 11));
-        
-        JLabel statusComp = new JLabel(status);
-        statusComp.setFont(new Font("Arial", Font.BOLD, 10));
-        Color statusColor = Color.GRAY;
-        if (status.contains("DISPATCHED") || status.contains("ACTIVE")) {
-            statusColor = new Color(255, 152, 0);
-        } else if (status.contains("COMPLETE") || status.contains("SECURED")) {
-            statusColor = new Color(76, 175, 80);
-        } else if (status.contains("EN ROUTE")) {
-            statusColor = new Color(33, 150, 243);
-        }
-        statusComp.setForeground(statusColor);
-        
-        item.add(labelComp, BorderLayout.WEST);
-        item.add(valueComp, BorderLayout.CENTER);
-        item.add(statusComp, BorderLayout.EAST);
-        
-        return item;
-    }
-    
-    private JPanel createDispatchProtocolPanel() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(new Color(255, 248, 225));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(255, 152, 0), 2),
-            BorderFactory.createEmptyBorder(10, 10, 10, 10)
-        ));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
-        
-        JLabel title = new JLabel("RECENT DISPATCH PROTOCOLS");
-        title.setFont(new Font("Arial", Font.BOLD, 11));
-        title.setForeground(new Color(255, 152, 0));
-        panel.add(title);
-        panel.add(Box.createVerticalStrut(8));
-        
-        int count = 0;
-        for (int i = dispatchProtocols.size() - 1; i >= 0 && count < 4; i--, count++) {
-            JLabel protocol = new JLabel("• " + dispatchProtocols.get(i));
-            protocol.setFont(new Font("Arial", Font.PLAIN, 10));
-            protocol.setForeground(new Color(80, 80, 80));
-            panel.add(protocol);
-            panel.add(Box.createVerticalStrut(3));
-        }
-        
+        JPanel panel = new JPanel(new GridLayout(1, 5, 15, 0));
+        panel.setBackground(new Color(245, 245, 250));
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
         return panel;
     }
     
     private void updateStats() {
         statsPanel.removeAll();
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weightx = 1;
-        gbc.weighty = 1;
-        gbc.insets = new Insets(5, 5, 5, 5);
         
-        // Count agents by type
         int ambulances = 0, ambulancesAvailable = 0;
         int hospitals = 0, hospitalBeds = 0, hospitalUsed = 0;
-        int vehicles = 0;
         int police = 0, policeAvailable = 0;
-        int lights = 0, lightsGreen = 0, lightsPriority = 0;
+        int vehicles = 0;
+        int lights = 0;
         
         for (AgentInfo agent : agents.values()) {
             switch (agent.type) {
@@ -278,132 +114,106 @@ public class TrafficSystemVisualization extends JFrame {
                     hospitalBeds += agent.capacity;
                     hospitalUsed += agent.currentLoad;
                     break;
-                case "vehicle":
-                    vehicles++;
-                    break;
                 case "police":
                     police++;
                     if (agent.available) policeAvailable++;
                     break;
+                case "vehicle":
+                    vehicles++;
+                    break;
                 case "traffic-light":
                     lights++;
-                    if (agent.status != null) {
-                        if (agent.status.contains("GREEN")) lightsGreen++;
-                        if (agent.status.contains("PRIORITY")) lightsPriority++;
-                    }
                     break;
             }
         }
         
-        // System uptime
-        long uptime = (System.currentTimeMillis() - systemStartTime) / 1000;
-        String uptimeStr = String.format("%02d:%02d:%02d", uptime / 3600, (uptime % 3600) / 60, uptime % 60);
+        // Emergency card
+        statsPanel.add(createStatCard(
+            "🚨 Emergencies",
+            String.valueOf(emergencies.size()),
+            "Active",
+            String.format("%d resolved", resolvedEmergencies),
+            emergencies.size() > 0 ? new Color(244, 67, 54) : new Color(76, 175, 80)
+        ));
         
-        // Coordination efficiency
-        double coordEfficiency = totalEmergencies > 0 ? (resolvedEmergencies * 100.0 / totalEmergencies) : 100.0;
+        // Ambulance card
+        statsPanel.add(createStatCard(
+            "🚑 Ambulances",
+            String.format("%d/%d", ambulancesAvailable, ambulances),
+            "Available",
+            ambulances > 0 ? String.format("%.0f%% ready", (ambulancesAvailable * 100.0 / ambulances)) : "N/A",
+            new Color(233, 30, 99)
+        ));
         
-        // Add stat cards
-        gbc.gridx = 0;
-        statsPanel.add(createStatCard("SYSTEM UPTIME", uptimeStr, 
-            "Multi-Agent System Active", new Color(103, 58, 183)), gbc);
+        // Hospital card
+        statsPanel.add(createStatCard(
+            "🏥 Hospitals",
+            String.valueOf(hospitals),
+            "Facilities",
+            String.format("%d/%d beds free", (hospitalBeds - hospitalUsed), hospitalBeds),
+            new Color(0, 150, 136)
+        ));
         
-        gbc.gridx = 1;
-        statsPanel.add(createStatCard("EMERGENCIES", 
-            emergencies.size() + " Active", 
-            totalEmergencies + " total | " + resolvedEmergencies + " resolved", 
-            emergencies.size() > 0 ? new Color(244, 67, 54) : new Color(76, 175, 80)), gbc);
+        // Police card
+        statsPanel.add(createStatCard(
+            "👮 Police",
+            String.format("%d/%d", policeAvailable, police),
+            "On Patrol",
+            police > 0 ? String.format("%.0f%% available", (policeAvailable * 100.0 / police)) : "N/A",
+            new Color(33, 150, 243)
+        ));
         
-        gbc.gridx = 2;
-        statsPanel.add(createStatCard("AMBULANCES", 
-            ambulancesAvailable + "/" + ambulances + " Ready", 
-            "Dispatch Protocol: Active", 
-            new Color(233, 30, 99)), gbc);
-        
-        gbc.gridx = 3;
-        statsPanel.add(createStatCard("HOSPITALS", 
-            (hospitalBeds - hospitalUsed) + "/" + hospitalBeds + " Beds Free", 
-            "Coordination: " + hospitals + " facilities", 
-            new Color(0, 150, 136)), gbc);
-        
-        gbc.gridx = 4;
-        statsPanel.add(createStatCard("POLICE UNITS", 
-            policeAvailable + "/" + police + " On Patrol", 
-            "Traffic Support: Active", 
-            new Color(33, 150, 243)), gbc);
-        
-        gbc.gridx = 5;
-        statsPanel.add(createStatCard("TRAFFIC CONTROL", 
-            lightsPriority > 0 ? lightsPriority + " PRIORITY" : lightsGreen + "/" + lights + " Green", 
-            "Monitoring: " + vehicles + " vehicles", 
-            lightsPriority > 0 ? new Color(244, 67, 54) : new Color(255, 152, 0)), gbc);
-        
-        gbc.gridx = 6;
-        statsPanel.add(createStatCard("COORDINATION", 
-            String.format("%.0f%%", coordEfficiency), 
-            "System Efficiency", 
-            coordEfficiency >= 90 ? new Color(76, 175, 80) : new Color(255, 152, 0)), gbc);
+        // Traffic card
+        statsPanel.add(createStatCard(
+            "🚦 Traffic",
+            String.valueOf(vehicles),
+            "Vehicles",
+            String.format("%d lights", lights),
+            new Color(255, 152, 0)
+        ));
         
         statsPanel.revalidate();
         statsPanel.repaint();
     }
     
-    private JPanel createStatCard(String title, String mainValue, String subValue, Color accentColor) {
+    private JPanel createStatCard(String title, String mainValue, String mainLabel, String subValue, Color color) {
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setBackground(Color.WHITE);
         card.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(accentColor, 3),
-            BorderFactory.createEmptyBorder(10, 12, 10, 12)
+            BorderFactory.createLineBorder(color, 3, true),
+            BorderFactory.createEmptyBorder(15, 15, 15, 15)
         ));
         
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(new Font("Arial", Font.BOLD, 10));
-        titleLabel.setForeground(new Color(120, 120, 120));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        titleLabel.setForeground(new Color(80, 80, 100));
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         
-        JLabel mainLabel = new JLabel(mainValue);
-        mainLabel.setFont(new Font("Arial", Font.BOLD, 20));
-        mainLabel.setForeground(accentColor);
-        mainLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel valueLabel = new JLabel(mainValue);
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 32));
+        valueLabel.setForeground(color);
+        valueLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        
+        JLabel mainLabelComp = new JLabel(mainLabel);
+        mainLabelComp.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        mainLabelComp.setForeground(new Color(100, 100, 120));
+        mainLabelComp.setAlignmentX(Component.CENTER_ALIGNMENT);
         
         JLabel subLabel = new JLabel(subValue);
-        subLabel.setFont(new Font("Arial", Font.PLAIN, 9));
-        subLabel.setForeground(new Color(150, 150, 150));
-        subLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        subLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        subLabel.setForeground(new Color(150, 150, 170));
+        subLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         
         card.add(titleLabel);
-        card.add(Box.createVerticalStrut(4));
-        card.add(mainLabel);
+        card.add(Box.createVerticalStrut(8));
+        card.add(valueLabel);
         card.add(Box.createVerticalStrut(2));
+        card.add(mainLabelComp);
+        card.add(Box.createVerticalStrut(5));
         card.add(subLabel);
         
         return card;
-    }
-    
-    private JPanel createLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 10));
-        panel.setBackground(new Color(240, 240, 245));
-        
-        JLabel title = new JLabel("REAL-TIME STATUS MONITORING", SwingConstants.CENTER);
-        title.setFont(new Font("Arial", Font.BOLD, 13));
-        title.setForeground(new Color(80, 80, 80));
-        title.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
-        panel.add(title, BorderLayout.NORTH);
-        
-        logArea = new JTextArea();
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 11));
-        logArea.setBackground(new Color(30, 30, 35));
-        logArea.setForeground(new Color(0, 255, 100));
-        logArea.setLineWrap(true);
-        logArea.setWrapStyleWord(true);
-        logArea.setMargin(new Insets(10, 10, 10, 10));
-        
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200), 2));
-        panel.add(scrollPane, BorderLayout.CENTER);
-        
-        return panel;
     }
     
     public void updateAgent(String name, String type, double x, double y, String status, 
@@ -415,34 +225,19 @@ public class TrafficSystemVisualization extends JFrame {
         info.available = available;
         info.capacity = capacity;
         info.currentLoad = currentLoad;
-        info.lastUpdate = System.currentTimeMillis();
     }
     
     public void addLog(String message) {
         SwingUtilities.invokeLater(() -> {
-            String timestamp = String.format("[%tT] ", System.currentTimeMillis());
+            String timestamp = String.format("[%tH:%<tM:%<tS] ", System.currentTimeMillis());
             logArea.append(timestamp + message + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
-            
-            // Track dispatch protocols
-            if (message.contains("DISPATCHED") || message.contains("selected") || 
-                message.contains("PRIORITY") || message.contains("route secured")) {
-                dispatchProtocols.add(message);
-                if (dispatchProtocols.size() > 10) {
-                    dispatchProtocols.remove(0);
-                }
-            }
         });
     }
     
     public void addEmergency(String id, String type, String location, double x, double y) {
         emergencies.put(id, new EmergencyStatus(id, type, location, x, y));
         totalEmergencies++;
-        
-        // Initialize coordination tracking
-        CoordinationInfo coord = new CoordinationInfo();
-        coord.emergencyId = id;
-        activeCoordinations.put(id, coord);
     }
     
     public void updateEmergency(String id, String status) {
@@ -450,36 +245,15 @@ public class TrafficSystemVisualization extends JFrame {
         if (emergency != null) {
             emergency.status = status;
         }
-        
-        // Update coordination info
-        CoordinationInfo coord = activeCoordinations.get(id);
-        if (coord != null && status != null) {
-            if (status.contains("Ambulance dispatched")) {
-                coord.ambulanceStatus = "DISPATCHED";
-            } else if (status.contains("Hospital assigned")) {
-                coord.hospitalStatus = "READY";
-            }
-        }
     }
     
     public void updateCoordination(String emergencyId, String ambulance, String hospital, 
                                   int policeUnits, int trafficLights) {
-        CoordinationInfo coord = activeCoordinations.get(emergencyId);
-        if (coord != null) {
-            coord.ambulance = ambulance;
-            coord.hospital = hospital;
-            coord.policeUnits = policeUnits + " units";
-            coord.trafficLights = trafficLights;
-            coord.ambulanceStatus = "EN ROUTE";
-            coord.hospitalStatus = "READY";
-            coord.policeStatus = "SECURING ROUTE";
-            coord.trafficStatus = "PRIORITY MODE";
-        }
+        // Simplified
     }
     
     public void removeEmergency(String id) {
         emergencies.remove(id);
-        activeCoordinations.remove(id);
         resolvedEmergencies++;
     }
     
@@ -500,21 +274,21 @@ public class TrafficSystemVisualization extends JFrame {
             
             for (int i = 0; i < names.length; i++) {
                 int col = i % 4;
-                int row = i / 4;
+                int row = i / 3;
                 locations.put(names[i], new Point2D.Double(
-                    180 + col * 240,
-                    180 + row * 240
+                    120 + col * 220,
+                    120 + row * 200
                 ));
             }
             
             for (int i = 0; i <= 9; i++) {
                 locations.put("Location" + i, new Point2D.Double(
-                    140 + (i % 5) * 220,
-                    140 + (i / 5) * 300
+                    80 + (i % 5) * 190,
+                    80 + (i / 5) * 270
                 ));
             }
             
-            locations.put("ControlCenter", new Point2D.Double(575, 90));
+            locations.put("ControlCenter", new Point2D.Double(500, 50));
         }
         
         @Override
@@ -525,87 +299,55 @@ public class TrafficSystemVisualization extends JFrame {
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             
             drawRoads(g2);
-            drawCoordinationLines(g2);
+            drawLocationLabels(g2);
             drawEmergencies(g2);
             drawAgents(g2);
             drawLegend(g2);
-            drawCoordinationIndicators(g2);
         }
         
         private void drawRoads(Graphics2D g2) {
-            g2.setColor(new Color(230, 230, 230));
-            g2.setStroke(new BasicStroke(16));
+            // Modern road style
+            g2.setColor(new Color(220, 220, 230));
+            g2.setStroke(new BasicStroke(14, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             
-            for (int i = 1; i <= 3; i++) {
-                g2.drawLine(50, i * 240, getWidth() - 50, i * 240);
-            }
-            
+            // Horizontal roads
             for (int i = 1; i <= 4; i++) {
-                g2.drawLine(i * 240, 50, i * 240, getHeight() - 50);
+                g2.drawLine(30, i * 170, getWidth() - 30, i * 170);
             }
             
+            // Vertical roads
+            for (int i = 1; i <= 5; i++) {
+                g2.drawLine(i * 190, 30, i * 190, getHeight() - 30);
+            }
+            
+            // Road markings (dashed lines)
             g2.setColor(Color.WHITE);
             g2.setStroke(new BasicStroke(2, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 
-                         0, new float[]{25, 25}, 0));
-            for (int i = 1; i <= 3; i++) {
-                g2.drawLine(50, i * 240, getWidth() - 50, i * 240);
-            }
+                         0, new float[]{20, 20}, 0));
             for (int i = 1; i <= 4; i++) {
-                g2.drawLine(i * 240, 50, i * 240, getHeight() - 50);
+                g2.drawLine(30, i * 170, getWidth() - 30, i * 170);
+            }
+            for (int i = 1; i <= 5; i++) {
+                g2.drawLine(i * 190, 30, i * 190, getHeight() - 30);
             }
         }
         
-        private void drawCoordinationLines(Graphics2D g2) {
-            g2.setStroke(new BasicStroke(3, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 
-                         0, new float[]{10, 10}, 0));
+        private void drawLocationLabels(Graphics2D g2) {
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+            g2.setColor(new Color(120, 120, 140));
             
-            for (EmergencyStatus emergency : emergencies.values()) {
-                Point2D emergencyPos = locations.getOrDefault(emergency.location,
-                    new Point2D.Double(emergency.x, emergency.y));
+            for (Map.Entry<String, Point2D> entry : locations.entrySet()) {
+                if (entry.getKey().startsWith("Location")) continue;
                 
-                for (AgentInfo agent : agents.values()) {
-                    if ((agent.type.equals("ambulance") && !agent.available) ||
-                        (agent.type.equals("police") && !agent.available)) {
-                        
-                        Point2D agentPos = getPosition(agent);
-                        
-                        Color lineColor = agent.type.equals("ambulance") ? 
-                            new Color(220, 20, 60, 150) : new Color(33, 150, 243, 150);
-                        
-                        g2.setColor(lineColor);
-                        g2.drawLine((int)emergencyPos.getX(), (int)emergencyPos.getY(),
-                                   (int)agentPos.getX(), (int)agentPos.getY());
-                    }
-                }
-            }
-        }
-        
-        private void drawCoordinationIndicators(Graphics2D g2) {
-            int y = 20;
-            g2.setFont(new Font("Arial", Font.BOLD, 11));
-            
-            // Count active coordinations
-            int priorityRoutes = 0;
-            for (AgentInfo agent : agents.values()) {
-                if (agent.type.equals("traffic-light") && agent.status != null && 
-                    agent.status.contains("PRIORITY")) {
-                    priorityRoutes++;
-                }
-            }
-            
-            if (priorityRoutes > 0) {
-                g2.setColor(new Color(255, 255, 255, 230));
-                g2.fillRoundRect(getWidth() - 280, y, 260, 70, 10, 10);
-                g2.setColor(new Color(244, 67, 54));
-                g2.setStroke(new BasicStroke(2));
-                g2.drawRoundRect(getWidth() - 280, y, 260, 70, 10, 10);
+                Point2D pos = entry.getValue();
+                String name = entry.getKey().replace("_", " ");
+                int width = g2.getFontMetrics().stringWidth(name);
                 
-                g2.setColor(new Color(244, 67, 54));
-                g2.drawString("TRAFFIC CONTROL ACTIVE", getWidth() - 270, y + 20);
-                g2.setFont(new Font("Arial", Font.PLAIN, 10));
-                g2.setColor(Color.BLACK);
-                g2.drawString(priorityRoutes + " intersections in priority mode", getWidth() - 270, y + 40);
-                g2.drawString("Emergency route secured", getWidth() - 270, y + 55);
+                g2.setColor(new Color(255, 255, 255, 200));
+                g2.fillRoundRect((int)pos.getX() - width/2 - 5, (int)pos.getY() + 45, 
+                               width + 10, 18, 8, 8);
+                g2.setColor(new Color(100, 100, 120));
+                g2.drawString(name, (int)pos.getX() - width/2, (int)pos.getY() + 58);
             }
         }
         
@@ -614,35 +356,42 @@ public class TrafficSystemVisualization extends JFrame {
                 Point2D pos = locations.getOrDefault(emergency.location, 
                     new Point2D.Double(emergency.x, emergency.y));
                 
+                // Animated pulsing effect
                 long time = System.currentTimeMillis();
-                float pulse = (float)(Math.sin(time / 200.0) * 0.3 + 0.7);
-                int size = (int)(90 * pulse);
+                float pulse = (float)(Math.sin(time / 120.0) * 0.25 + 0.75);
+                int size = (int)(80 * pulse);
                 
-                g2.setColor(new Color(255, 0, 0, 80));
+                // Outer glow
+                g2.setColor(new Color(255, 0, 0, 60));
                 g2.fillOval((int)pos.getX() - size/2, (int)pos.getY() - size/2, size, size);
                 
-                g2.setStroke(new BasicStroke(4));
-                g2.setColor(new Color(255, 0, 0));
-                g2.drawOval((int)pos.getX() - 40, (int)pos.getY() - 40, 80, 80);
+                // Inner circle
+                g2.setColor(new Color(244, 67, 54));
+                g2.fillOval((int)pos.getX() - 25, (int)pos.getY() - 25, 50, 50);
                 
-                g2.setColor(Color.RED);
-                g2.setFont(new Font("Arial", Font.BOLD, 45));
-                g2.drawString("!", (int)pos.getX() - 12, (int)pos.getY() + 18);
-                
-                g2.setFont(new Font("Arial", Font.BOLD, 13));
-                g2.setColor(Color.BLACK);
-                String type = emergency.type.toUpperCase();
-                int width = g2.getFontMetrics().stringWidth(type);
-                
+                // White exclamation mark
                 g2.setColor(Color.WHITE);
-                g2.fillRoundRect((int)pos.getX() - width/2 - 10, (int)pos.getY() + 35, 
-                                width + 20, 28, 8, 8);
-                g2.setColor(Color.RED);
-                g2.setStroke(new BasicStroke(2));
-                g2.drawRoundRect((int)pos.getX() - width/2 - 10, (int)pos.getY() + 35, 
-                                width + 20, 28, 8, 8);
-                g2.setColor(Color.BLACK);
-                g2.drawString(type, (int)pos.getX() - width/2, (int)pos.getY() + 54);
+                g2.setFont(new Font("Arial", Font.BOLD, 36));
+                g2.drawString("!", (int)pos.getX() - 9, (int)pos.getY() + 12);
+                
+                // Emergency type label with shadow
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                String label = emergency.type.toUpperCase();
+                int width = g2.getFontMetrics().stringWidth(label);
+                
+                // Shadow
+                g2.setColor(new Color(0, 0, 0, 50));
+                g2.fillRoundRect((int)pos.getX() - width/2 - 7, (int)pos.getY() + 27, 
+                               width + 14, 22, 11, 11);
+                
+                // Label background
+                g2.setColor(Color.WHITE);
+                g2.fillRoundRect((int)pos.getX() - width/2 - 6, (int)pos.getY() + 26, 
+                               width + 12, 20, 10, 10);
+                
+                // Label text
+                g2.setColor(new Color(244, 67, 54));
+                g2.drawString(label, (int)pos.getX() - width/2, (int)pos.getY() + 41);
             }
         }
         
@@ -659,46 +408,60 @@ public class TrafficSystemVisualization extends JFrame {
         private void drawTrafficLight(Graphics2D g2, AgentInfo agent) {
             Point2D pos = getPosition(agent);
             
-            g2.setColor(new Color(60, 60, 60));
-            g2.fillRoundRect((int)pos.getX() - 20, (int)pos.getY() - 50, 40, 100, 12, 12);
+            // Modern traffic light box with gradient
+            GradientPaint gradient = new GradientPaint(
+                (int)pos.getX() - 15, (int)pos.getY() - 40,
+                new Color(60, 60, 70),
+                (int)pos.getX() + 15, (int)pos.getY() + 40,
+                new Color(40, 40, 50)
+            );
+            g2.setPaint(gradient);
+            g2.fillRoundRect((int)pos.getX() - 15, (int)pos.getY() - 40, 30, 80, 10, 10);
             
-            g2.setColor(new Color(40, 40, 40));
-            g2.fillOval((int)pos.getX() - 15, (int)pos.getY() - 40, 30, 30);
-            g2.fillOval((int)pos.getX() - 15, (int)pos.getY() - 5, 30, 30);
-            g2.fillOval((int)pos.getX() - 15, (int)pos.getY() + 20, 30, 30);
+            // Light housings
+            g2.setColor(new Color(30, 30, 35));
+            g2.fillOval((int)pos.getX() - 10, (int)pos.getY() - 30, 20, 20);
+            g2.fillOval((int)pos.getX() - 10, (int)pos.getY() - 10, 20, 20);
+            g2.fillOval((int)pos.getX() - 10, (int)pos.getY() + 10, 20, 20);
             
+            // Active light with glow
             if (agent.status != null) {
-                Color lightColor = Color.GRAY;
+                Color lightColor = new Color(60, 60, 60);
                 int yOffset = 0;
                 
                 if (agent.status.contains("RED")) {
                     lightColor = new Color(244, 67, 54);
-                    yOffset = -40;
+                    yOffset = -30;
                 } else if (agent.status.contains("YELLOW")) {
-                    lightColor = new Color(255, 235, 59);
-                    yOffset = -5;
+                    lightColor = new Color(255, 193, 7);
+                    yOffset = -10;
                 } else if (agent.status.contains("GREEN")) {
                     lightColor = new Color(76, 175, 80);
-                    yOffset = 20;
+                    yOffset = 10;
                 }
                 
-                g2.setColor(lightColor);
-                g2.fillOval((int)pos.getX() - 12, (int)pos.getY() + yOffset, 24, 24);
-                
+                // Glow effect
                 g2.setColor(new Color(lightColor.getRed(), lightColor.getGreen(), 
-                                     lightColor.getBlue(), 50));
-                g2.fillOval((int)pos.getX() - 18, (int)pos.getY() + yOffset - 6, 36, 36);
+                                     lightColor.getBlue(), 80));
+                g2.fillOval((int)pos.getX() - 14, (int)pos.getY() + yOffset - 4, 28, 28);
+                
+                // Bright light
+                g2.setColor(lightColor);
+                g2.fillOval((int)pos.getX() - 8, (int)pos.getY() + yOffset, 16, 16);
+                
+                // Highlight
+                g2.setColor(new Color(255, 255, 255, 150));
+                g2.fillOval((int)pos.getX() - 5, (int)pos.getY() + yOffset + 3, 6, 6);
             }
             
+            // Priority mode indicator
             if (agent.status != null && agent.status.contains("PRIORITY")) {
-                g2.setColor(new Color(255, 0, 0, 60));
-                g2.fillOval((int)pos.getX() - 65, (int)pos.getY() - 65, 130, 130);
+                g2.setColor(new Color(244, 67, 54));
+                g2.setStroke(new BasicStroke(3));
+                g2.drawRoundRect((int)pos.getX() - 20, (int)pos.getY() - 45, 40, 90, 15, 15);
                 
-                g2.setFont(new Font("Arial", Font.BOLD, 9));
-                g2.setColor(Color.RED);
-                String priorityText = "PRIORITY";
-                int width = g2.getFontMetrics().stringWidth(priorityText);
-                g2.drawString(priorityText, (int)pos.getX() - width/2, (int)pos.getY() + 75);
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 9));
+                g2.drawString("PRIORITY", (int)pos.getX() - 22, (int)pos.getY() + 60);
             }
         }
         
@@ -707,86 +470,117 @@ public class TrafficSystemVisualization extends JFrame {
             Color color = getAgentColor(agent);
             String label = getAgentLabel(agent);
             
-            g2.setColor(color);
+            // Shadow
+            g2.setColor(new Color(0, 0, 0, 30));
+            g2.fillOval((int)pos.getX() - 23, (int)pos.getY() - 21, 46, 46);
+            
+            // Main circle with gradient
+            GradientPaint gradient = new GradientPaint(
+                (int)pos.getX(), (int)pos.getY() - 25,
+                color.brighter(),
+                (int)pos.getX(), (int)pos.getY() + 25,
+                color.darker()
+            );
+            g2.setPaint(gradient);
             g2.fillOval((int)pos.getX() - 25, (int)pos.getY() - 25, 50, 50);
             
+            // Status border (available/busy)
             g2.setStroke(new BasicStroke(4));
-            g2.setColor(agent.available ? new Color(76, 175, 80) : new Color(244, 67, 54));
+            if (agent.available) {
+                g2.setColor(new Color(76, 175, 80));
+            } else {
+                g2.setColor(new Color(244, 67, 54));
+            }
             g2.drawOval((int)pos.getX() - 25, (int)pos.getY() - 25, 50, 50);
             
-            g2.setColor(Color.WHITE);
-            g2.setFont(new Font("Arial", Font.BOLD, 14));
+            // Inner highlight
+            g2.setColor(new Color(255, 255, 255, 100));
+            g2.fillOval((int)pos.getX() - 20, (int)pos.getY() - 20, 20, 20);
+            
+            // Label with shadow
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 13));
             FontMetrics fm = g2.getFontMetrics();
             int labelWidth = fm.stringWidth(label);
+            
+            // Text shadow
+            g2.setColor(new Color(0, 0, 0, 100));
+            g2.drawString(label, (int)pos.getX() - labelWidth/2 + 1, (int)pos.getY() + 6);
+            
+            // Text
+            g2.setColor(Color.WHITE);
             g2.drawString(label, (int)pos.getX() - labelWidth/2, (int)pos.getY() + 5);
             
-            g2.setFont(new Font("Arial", Font.BOLD, 11));
-            g2.setColor(Color.BLACK);
+            // Name label below
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 10));
             String name = agent.name;
             int nameWidth = g2.getFontMetrics().stringWidth(name);
             
+            // Label background
             g2.setColor(Color.WHITE);
-            g2.fillRoundRect((int)pos.getX() - nameWidth/2 - 5, (int)pos.getY() + 30, 
-                            nameWidth + 10, 20, 6, 6);
-            g2.setColor(color);
-            g2.setStroke(new BasicStroke(2));
-            g2.drawRoundRect((int)pos.getX() - nameWidth/2 - 5, (int)pos.getY() + 30, 
-                            nameWidth + 10, 20, 6, 6);
-            g2.setColor(Color.BLACK);
-            g2.drawString(name, (int)pos.getX() - nameWidth/2, (int)pos.getY() + 44);
+            g2.fillRoundRect((int)pos.getX() - nameWidth/2 - 6, (int)pos.getY() + 32, 
+                            nameWidth + 12, 18, 9, 9);
             
-            if ("hospital".equals(agent.type) && agent.capacity > 0) {
-                String capacity = agent.currentLoad + "/" + agent.capacity;
-                g2.setFont(new Font("Arial", Font.PLAIN, 10));
-                int capWidth = g2.getFontMetrics().stringWidth(capacity);
-                g2.setColor(new Color(100, 100, 100));
-                g2.drawString(capacity, (int)pos.getX() - capWidth/2, (int)pos.getY() + 58);
-            }
+            // Label border
+            g2.setStroke(new BasicStroke(2));
+            g2.setColor(color);
+            g2.drawRoundRect((int)pos.getX() - nameWidth/2 - 6, (int)pos.getY() + 32, 
+                            nameWidth + 12, 18, 9, 9);
+            
+            // Name text
+            g2.setColor(new Color(60, 60, 80));
+            g2.drawString(name, (int)pos.getX() - nameWidth/2, (int)pos.getY() + 45);
         }
         
         private void drawLegend(Graphics2D g2) {
-            int x = 30;
-            int y = getHeight() - 180;
+            int x = 25;
+            int y = getHeight() - 160;
             
+            // Modern card style
             g2.setColor(new Color(255, 255, 255, 250));
-            g2.fillRoundRect(x, y, 300, 160, 15, 15);
-            g2.setColor(new Color(100, 100, 100));
+            g2.fillRoundRect(x, y, 240, 140, 15, 15);
+            g2.setColor(new Color(200, 200, 220));
             g2.setStroke(new BasicStroke(2));
-            g2.drawRoundRect(x, y, 300, 160, 15, 15);
+            g2.drawRoundRect(x, y, 240, 140, 15, 15);
             
-            g2.setFont(new Font("Arial", Font.BOLD, 14));
-            g2.setColor(new Color(50, 50, 50));
-            g2.drawString("LEGEND", x + 15, y + 25);
+            // Title
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            g2.setColor(new Color(60, 60, 80));
+            g2.drawString("🗺️ LEGEND", x + 15, y + 25);
             
-            String[] labels = {"AMB - Ambulance", "HOS - Hospital", "VEH - Vehicle", 
-                              "POL - Police", "TCC - Control Center"};
-            Color[] colors = {new Color(220, 20, 60), new Color(0, 150, 0), 
-                            new Color(100, 100, 100), new Color(0, 100, 200), 
-                            new Color(50, 50, 150)};
+            // Separator line
+            g2.setColor(new Color(220, 220, 235));
+            g2.setStroke(new BasicStroke(1));
+            g2.drawLine(x + 15, y + 32, x + 225, y + 32);
             
-            g2.setFont(new Font("Arial", Font.PLAIN, 12));
+            String[] labels = {"Ambulance", "Hospital", "Police", "Vehicle"};
+            String[] emojis = {"🚑", "🏥", "👮", "🚗"};
+            Color[] colors = {
+                new Color(220, 20, 60), 
+                new Color(0, 150, 0), 
+                new Color(0, 100, 200), 
+                new Color(100, 100, 100)
+            };
+            
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 12));
             for (int i = 0; i < labels.length; i++) {
+                // Colored circle
                 g2.setColor(colors[i]);
-                g2.fillOval(x + 20, y + 45 + i * 25, 20, 20);
-                
+                g2.fillOval(x + 20, y + 45 + i * 22, 16, 16);
                 g2.setColor(new Color(76, 175, 80));
                 g2.setStroke(new BasicStroke(2));
-                g2.drawOval(x + 20, y + 45 + i * 25, 20, 20);
+                g2.drawOval(x + 20, y + 45 + i * 22, 16, 16);
                 
-                g2.setColor(Color.BLACK);
-                g2.drawString(labels[i], x + 50, y + 60 + i * 25);
+                // Text
+                g2.setColor(new Color(80, 80, 100));
+                g2.drawString(emojis[i] + " " + labels[i], x + 45, y + 58 + i * 22);
             }
             
-            g2.setFont(new Font("Arial", Font.PLAIN, 11));
+            // Status legend at bottom
+            g2.setFont(new Font("Segoe UI", Font.ITALIC, 10));
             g2.setColor(new Color(76, 175, 80));
-            g2.fillOval(x + 190, y + 50, 15, 15);
-            g2.setColor(Color.BLACK);
-            g2.drawString("Available", x + 210, y + 62);
-            
+            g2.drawString("● Available", x + 20, y + 128);
             g2.setColor(new Color(244, 67, 54));
-            g2.fillOval(x + 190, y + 75, 15, 15);
-            g2.setColor(Color.BLACK);
-            g2.drawString("Busy", x + 210, y + 87);
+            g2.drawString("● Busy", x + 130, y + 128);
         }
         
         private Point2D getPosition(AgentInfo agent) {
@@ -804,8 +598,8 @@ public class TrafficSystemVisualization extends JFrame {
             
             int hash = agent.name.hashCode();
             return new Point2D.Double(
-                150 + Math.abs(hash % 900),
-                150 + Math.abs((hash / 100) % 600)
+                80 + Math.abs(hash % 800),
+                80 + Math.abs((hash / 100) % 500)
             );
         }
         
@@ -815,18 +609,18 @@ public class TrafficSystemVisualization extends JFrame {
                 case "hospital": return new Color(0, 150, 0);
                 case "vehicle": return new Color(100, 100, 100);
                 case "police": return new Color(0, 100, 200);
-                case "tcc": return new Color(50, 50, 150);
+                case "tcc": return new Color(103, 58, 183);
                 default: return Color.GRAY;
             }
         }
         
         private String getAgentLabel(AgentInfo agent) {
             switch (agent.type) {
-                case "ambulance": return "AMB";
-                case "hospital": return "HOS";
-                case "vehicle": return "VEH";
-                case "police": return "POL";
-                case "tcc": return "TCC";
+                case "ambulance": return "🚑";
+                case "hospital": return "🏥";
+                case "vehicle": return "🚗";
+                case "police": return "👮";
+                case "tcc": return "🎛";
                 default: return "?";
             }
         }
@@ -837,12 +631,10 @@ public class TrafficSystemVisualization extends JFrame {
         double x, y;
         boolean available = true;
         int capacity = 0, currentLoad = 0;
-        long lastUpdate;
         
         AgentInfo(String name, String type) {
             this.name = name;
             this.type = type;
-            this.lastUpdate = System.currentTimeMillis();
         }
     }
     
@@ -858,17 +650,5 @@ public class TrafficSystemVisualization extends JFrame {
             this.y = y;
             this.status = "active";
         }
-    }
-    
-    static class CoordinationInfo {
-        String emergencyId;
-        String ambulance = "Pending";
-        String hospital = "Pending";
-        String policeUnits = "0 units";
-        int trafficLights = 0;
-        String ambulanceStatus = "INITIATING";
-        String hospitalStatus = "STANDBY";
-        String policeStatus = "STANDBY";
-        String trafficStatus = "NORMAL";
     }
 }
