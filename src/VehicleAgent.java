@@ -1,155 +1,98 @@
 import jade.core.Agent;
-import jade.core.behaviours.*;
+import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
-import jade.lang.acl.MessageTemplate;
-import jade.domain.DFService;
-import jade.domain.FIPAAgentManagement.*;
 
 public class VehicleAgent extends Agent {
-    private String vehicleType;
-    private String currentLocation;
-    private String destination;
-    private int speed = 50;
-    private boolean moving = true;
-    private String vehicleId;
+    
+    protected int positionX;
+    protected int positionY;
+    protected int destinationX;
+    protected int destinationY;
+    protected int currentSpeed;
+    protected boolean shouldStop;
     
     protected void setup() {
+        System.out.println("Vehicle " + getLocalName() + " is ready.");
+        
+        // Get starting position from arguments
         Object[] args = getArguments();
-        if (args != null && args.length > 0) {
-            vehicleType = (String) args[0];
+        if (args != null && args.length >= 4) {
+            positionX = Integer.parseInt(args[0].toString());
+            positionY = Integer.parseInt(args[1].toString());
+            destinationX = Integer.parseInt(args[2].toString());
+            destinationY = Integer.parseInt(args[3].toString());
         } else {
-            vehicleType = "regular";
+            // Default values
+            positionX = 0;
+            positionY = 0;
+            destinationX = 10;
+            destinationY = 10;
         }
         
-        vehicleId = getAID().getLocalName();
-        currentLocation = "Location" + (int)(Math.random() * 10);
-        destination = "Location" + (int)(Math.random() * 10);
+        currentSpeed = 1;
+        shouldStop = false;
         
-        System.out.println("Vehicle " + vehicleId + " created (" + vehicleType + ")");
-        System.out.println("  Starting at: " + currentLocation);
-        System.out.println("  Heading to: " + destination);
-        System.out.println("  Speed: " + speed + " km/h");
+        // Add behavior to move
+        addBehaviour(new MoveBehaviour(this, 1000));
         
-        // Update visualization
-        VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-            "En route to " + destination, true);
-        VisualizationHelper.log("🚗 " + vehicleId + " on road");
-        
-        if (!vehicleType.equals("regular")) {
-            registerWithDF();
-        }
-        
-        addBehaviour(new DriveToDestination(this));
-        addBehaviour(new HandleTrafficSignals());
-        addBehaviour(new UpdateVisualization(this, 2000));
+        // Add behavior to receive messages
+        addBehaviour(new ReceiveMessageBehaviour());
     }
     
-    private void registerWithDF() {
-        DFAgentDescription dfd = new DFAgentDescription();
-        dfd.setName(getAID());
-        ServiceDescription sd = new ServiceDescription();
-        sd.setType("vehicle");
-        sd.setName(vehicleType + "-vehicle");
-        dfd.addServices(sd);
-        try {
-            DFService.register(this, dfd);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-    
-    // Periodic visualization update
-    class UpdateVisualization extends TickerBehaviour {
-        public UpdateVisualization(Agent a, long period) {
+    // Behavior to move the vehicle
+    private class MoveBehaviour extends TickerBehaviour {
+        
+        public MoveBehaviour(Agent a, long period) {
             super(a, period);
         }
         
-        public void onTick() {
-            String status = moving ? "Moving (" + speed + " km/h)" : "Stopped";
-            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                status, moving);
-        }
-    }
-    
-    class DriveToDestination extends TickerBehaviour {
-        public DriveToDestination(Agent a) {
-            super(a, 10000);
-        }
-        
-        public void onTick() {
-            if (!currentLocation.equals(destination) && moving) {
-                System.out.println("[" + vehicleId + "] Driving: " + currentLocation + 
-                                 " → " + destination + " (Speed: " + speed + " km/h)");
-                
-                VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                    "Driving to " + destination, true);
-                
-                if (Math.random() > 0.6) {
-                    currentLocation = destination;
-                    System.out.println("[" + vehicleId + "] ✓ Arrived at " + destination);
-                    
-                    VisualizationHelper.log("📍 " + vehicleId + " arrived at " + destination);
-                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                        "Arrived", false);
-                    
-                    addBehaviour(new WakerBehaviour(myAgent, 5000) {
-                        protected void onWake() {
-                            destination = "Location" + (int)(Math.random() * 10);
-                            System.out.println("[" + vehicleId + "] New destination: " + destination);
-                            
-                            VisualizationHelper.log("🗺️ " + vehicleId + " new destination: " + destination);
-                            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                                "Planning route to " + destination, true);
-                        }
-                    });
+        protected void onTick() {
+            if (!shouldStop) {
+                // Simple movement toward destination (fix: don't overshoot)
+                if (positionX < destinationX) {
+                    positionX = Math.min(positionX + currentSpeed, destinationX);
+                } else if (positionX > destinationX) {
+                    positionX = Math.max(positionX - currentSpeed, destinationX);
                 }
+                
+                if (positionY < destinationY) {
+                    positionY = Math.min(positionY + currentSpeed, destinationY);
+                } else if (positionY > destinationY) {
+                    positionY = Math.max(positionY - currentSpeed, destinationY);
+                }
+                
+                System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
+                
+                // Check if reached destination
+                if (positionX == destinationX && positionY == destinationY) {
+                    System.out.println(getLocalName() + " reached destination!");
+                }
+            } else {
+                System.out.println(getLocalName() + " is stopped (waiting)");
             }
         }
     }
     
-    class HandleTrafficSignals extends CyclicBehaviour {
+    // Behavior to receive messages
+    private class ReceiveMessageBehaviour extends jade.core.behaviours.CyclicBehaviour {
+        
         public void action() {
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
-            ACLMessage msg = receive(mt);
-            
-            if (msg != null) {
-                String content = msg.getContent();
+            ACLMessage message = receive();
+            if (message != null) {
+                String content = message.getContent();
                 
-                if (content.startsWith("STOP")) {
-                    moving = false;
-                    speed = 0;
-                    System.out.println("[" + vehicleId + "] 🔴 STOPPED at traffic light");
-                    
-                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                        "Stopped - Red Light", false);
-                    
-                } else if (content.startsWith("GO")) {
-                    moving = true;
-                    speed = 50;
-                    System.out.println("[" + vehicleId + "] 🟢 MOVING");
-                    
-                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                        "Moving", true);
-                    
-                } else if (content.startsWith("YIELD_EMERGENCY")) {
-                    moving = false;
-                    speed = 0;
-                    System.out.println("[" + vehicleId + "] 🚑 YIELDING to emergency vehicle");
-                    
-                    VisualizationHelper.log("🚑 " + vehicleId + " yielding to emergency vehicle");
-                    VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                        "YIELDING to Emergency", false);
-                    
-                    addBehaviour(new WakerBehaviour(myAgent, 8000) {
-                        protected void onWake() {
-                            moving = true;
-                            speed = 50;
-                            System.out.println("[" + vehicleId + "] Resuming normal speed");
-                            
-                            VisualizationHelper.updateAgent(getLocalName(), "vehicle", currentLocation,
-                                "Resuming", true);
-                        }
-                    });
+                if (content.equals("PULL_OVER")) {
+                    shouldStop = true;
+                    System.out.println(getLocalName() + " pulling over for emergency vehicle");
+                } else if (content.equals("CLEAR")) {
+                    shouldStop = false;
+                    System.out.println(getLocalName() + " resuming movement");
+                } else if (content.startsWith("RED_LIGHT")) {
+                    shouldStop = true;
+                    System.out.println(getLocalName() + " stopping at red light");
+                } else if (content.startsWith("GREEN_LIGHT")) {
+                    shouldStop = false;
+                    System.out.println(getLocalName() + " can go (green light)");
                 }
             } else {
                 block();
@@ -158,12 +101,6 @@ public class VehicleAgent extends Agent {
     }
     
     protected void takeDown() {
-        try {
-            if (!vehicleType.equals("regular")) {
-                DFService.deregister(this);
-            }
-        } catch (Exception e) {}
-        System.out.println("Vehicle " + vehicleId + " terminating.");
-        VisualizationHelper.log("🚗 " + vehicleId + " offline");
+        System.out.println("Vehicle " + getLocalName() + " terminating.");
     }
 }

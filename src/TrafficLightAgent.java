@@ -1,125 +1,88 @@
 import jade.core.Agent;
-import jade.core.behaviours.*;
+import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
-import jade.lang.acl.MessageTemplate;
-import jade.domain.DFService;
-import jade.domain.FIPAAgentManagement.*;
+import jade.core.AID;
 
 public class TrafficLightAgent extends Agent {
-    private String intersection;
-    private String currentState = "GREEN";
-    private boolean priorityMode = false;
-    private int cycleCount = 0;
-    private long priorityStartTime = 0;
+    
+    private int intersectionX;
+    private int intersectionY;
+    private String currentColor;
+    private int colorTimer;
+    private boolean priorityMode;
     
     protected void setup() {
+        System.out.println("Traffic Light " + getLocalName() + " is ready.");
+        
+        // Get position from arguments
         Object[] args = getArguments();
-        if (args != null && args.length > 0) {
-            intersection = (String) args[0];
+        if (args != null && args.length >= 2) {
+            intersectionX = Integer.parseInt(args[0].toString());
+            intersectionY = Integer.parseInt(args[1].toString());
         } else {
-            intersection = "Intersection1";
+            intersectionX = 5;
+            intersectionY = 5;
         }
         
-        System.out.println("\n🚦 Traffic Light System Initialized");
-        System.out.println("  Location: " + intersection);
-        System.out.println("  Initial State: "+ " " + currentState);
-        System.out.println("  Cycle Duration: 8 seconds per state");
+        currentColor = "RED";
+        colorTimer = 0;
+        priorityMode = false;
         
-        // Update visualization
-        VisualizationHelper.updateAgent(getLocalName(), "traffic-light", intersection,
-            currentState, true);
-        VisualizationHelper.log("🚦 " + intersection + " traffic light active");
+        System.out.println("Traffic Light at intersection (" + intersectionX + "," + intersectionY + ")");
         
-        // Register with DF
-        DFAgentDescription dfd = new DFAgentDescription();
-        dfd.setName(getAID());
-        ServiceDescription sd = new ServiceDescription();
-        sd.setType("traffic-light");
-        sd.setName(intersection);
-        dfd.addServices(sd);
-        try {
-            DFService.register(this, dfd);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // Add behavior to cycle colors
+        addBehaviour(new ColorCycleBehaviour(this, 1000));
         
-        addBehaviour(new TrafficLightCycle(this));
-        addBehaviour(new HandlePriorityRequests());
-        addBehaviour(new MonitorPriorityMode(this));
-        addBehaviour(new UpdateVisualization(this, 1000));
+        // Add behavior to receive messages
+        addBehaviour(new ReceiveCommandBehaviour());
     }
     
-    // Periodic visualization update
-    class UpdateVisualization extends TickerBehaviour {
-        public UpdateVisualization(Agent a, long period) {
+    // Behavior to cycle through colors
+    private class ColorCycleBehaviour extends TickerBehaviour {
+        
+        public ColorCycleBehaviour(Agent a, long period) {
             super(a, period);
         }
         
-        public void onTick() {
-            String status = currentState + (priorityMode ? " [PRIORITY]" : "");
-            VisualizationHelper.updateAgent(getLocalName(), "traffic-light", intersection,
-                status, true);
-        }
-    }
-    
-    class TrafficLightCycle extends TickerBehaviour {
-        public TrafficLightCycle(Agent a) {
-            super(a, 8000);
-        }
-        
-        public void onTick() {
+        protected void onTick() {
             if (!priorityMode) {
-                cycleCount++;
+                colorTimer++;
                 
-                switch (currentState) {
-                    case "GREEN":
-                        currentState = "YELLOW";
-                        System.out.println("[" + intersection + "] " + 
-                                         " Light: YELLOW (Prepare to stop)");
-                        break;
-                        
-                    case "YELLOW":
-                        currentState = "RED";
-                        System.out.println("[" + intersection + "] "+ 
-                                         " Light: RED (Stop)");
-                        notifyVehicles("STOP");
-                        break;
-                        
-                    case "RED":
-                        currentState = "GREEN";
-                        System.out.println("[" + intersection + "] " + 
-                                         " Light: GREEN (Go)");
-                        notifyVehicles("GO");
-                        break;
+                if (currentColor.equals("GREEN") && colorTimer >= 5) {
+                    currentColor = "YELLOW";
+                    colorTimer = 0;
+                    System.out.println(getLocalName() + " is now YELLOW");
+                } else if (currentColor.equals("YELLOW") && colorTimer >= 2) {
+                    currentColor = "RED";
+                    colorTimer = 0;
+                    System.out.println(getLocalName() + " is now RED");
+                } else if (currentColor.equals("RED") && colorTimer >= 5) {
+                    currentColor = "GREEN";
+                    colorTimer = 0;
+                    System.out.println(getLocalName() + " is now GREEN");
                 }
-                
-                VisualizationHelper.updateAgent(getLocalName(), "traffic-light", intersection,
-                    currentState, true);
-                
-                if (cycleCount % 5 == 0) {
-                    System.out.println("[" + intersection + "] Status: Normal operation (" + 
-                                     cycleCount + " cycles completed)");
+            } else {
+                // Stay green during priority mode
+                if (!currentColor.equals("GREEN")) {
+                    currentColor = "GREEN";
+                    System.out.println(getLocalName() + " PRIORITY MODE - GREEN");
                 }
             }
         }
     }
     
-    class HandlePriorityRequests extends CyclicBehaviour {
+    // Behavior to receive commands
+    private class ReceiveCommandBehaviour extends jade.core.behaviours.CyclicBehaviour {
+        
         public void action() {
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.REQUEST);
-            ACLMessage msg = receive(mt);
-            
-            if (msg != null) {
-                String content = msg.getContent();
+            ACLMessage message = receive();
+            if (message != null) {
+                String content = message.getContent();
                 
-                if (content.startsWith("PRIORITY_ROUTE:")) {
-                    String location = content.split(":")[1];
-                    activatePriorityMode(location);
-                    
-                    ACLMessage reply = msg.createReply();
-                    reply.setPerformative(ACLMessage.INFORM);
-                    reply.setContent("PRIORITY_ACTIVATED:" + intersection);
-                    send(reply);
+                if (content.equals("GIVE_PRIORITY")) {
+                    activatePriorityMode();
+                } else if (content.equals("CLEAR_PRIORITY")) {
+                    deactivatePriorityMode();
                 }
             } else {
                 block();
@@ -127,94 +90,27 @@ public class TrafficLightAgent extends Agent {
         }
     }
     
-    private void activatePriorityMode(String emergencyLocation) {
-        if (!priorityMode) {
-            priorityMode = true;
-            priorityStartTime = System.currentTimeMillis();
-            currentState = "GREEN";
-            
-            System.out.println("\n╔═══════════════════════════════════════════════════╗");
-            System.out.println("║    PRIORITY MODE ACTIVATED                   ║");
-            System.out.println("╠═══════════════════════════════════════════════════╣");
-            System.out.println("║ Location:        " + String.format("%-32s", intersection) + "║");
-            System.out.println("║ State:            FORCED GREEN                  ║");
-            System.out.println("║ Reason:          Emergency Vehicle Route          ║");
-            System.out.println("║ Duration:        15 seconds                       ║");
-            System.out.println("╚═══════════════════════════════════════════════════╝\n");
-            
-            VisualizationHelper.log(intersection + " PRIORITY MODE - Emergency route");
-            VisualizationHelper.updateAgent(getLocalName(), "traffic-light", intersection,
-                "PRIORITY - FORCED GREEN", true);
-            
-            notifyVehicles("YIELD_EMERGENCY");
-        }
-    }
-    
-    class MonitorPriorityMode extends TickerBehaviour {
-        public MonitorPriorityMode(Agent a) {
-            super(a, 2000);
-        }
+    // Activate priority mode for emergency vehicles
+    private void activatePriorityMode() {
+        priorityMode = true;
+        currentColor = "GREEN";
+        System.out.println("*** " + getLocalName() + " PRIORITY MODE ACTIVATED ***");
         
-        public void onTick() {
-            if (priorityMode) {
-                long elapsed = System.currentTimeMillis() - priorityStartTime;
-                
-                if (elapsed >= 15000) {
-                    deactivatePriorityMode();
-                } else {
-                    int remaining = (int)((15000 - elapsed) / 1000);
-                    if (remaining % 5 == 0) {
-                        System.out.println("[" + intersection + "] Priority mode: " + 
-                                         remaining + " seconds remaining");
-                    }
-                }
-            }
-        }
+        // Send confirmation to Control Center
+        ACLMessage response = new ACLMessage(ACLMessage.INFORM);
+        response.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
+        response.setContent("PRIORITY_ACTIVE:" + intersectionX + "," + intersectionY);
+        send(response);
     }
     
+    // Deactivate priority mode
     private void deactivatePriorityMode() {
         priorityMode = false;
-        currentState = "GREEN";
-        
-        System.out.println("\n[" + intersection + "] ✓ Priority mode deactivated");
-        System.out.println("[" + intersection + "] Resuming normal traffic light operation\n");
-        
-        VisualizationHelper.log("✓ " + intersection + " returning to normal operation");
-        VisualizationHelper.updateAgent(getLocalName(), "traffic-light", intersection,
-            currentState, true);
-        
-        notifyVehicles("NORMAL_OPERATION");
+        colorTimer = 0;
+        System.out.println(getLocalName() + " returning to normal cycle");
     }
     
-    private void notifyVehicles(String message) {
-        DFAgentDescription template = new DFAgentDescription();
-        ServiceDescription sd = new ServiceDescription();
-        sd.setType("vehicle");
-        template.addServices(sd);
-        
-        try {
-            DFAgentDescription[] result = DFService.search(this, template);
-            
-            if (result.length > 0) {
-                ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
-                for (DFAgentDescription dfd : result) {
-                    msg.addReceiver(dfd.getName());
-                }
-                msg.setContent(message + ":" + intersection);
-                send(msg);
-            }
-        } catch (Exception e) {
-        }
-    }
     protected void takeDown() {
-        try {
-            DFService.deregister(this);
-        } catch (Exception e) {}
-        
-        System.out.println("\n Traffic Light at " + intersection + " shutting down");
-        System.out.println("  Total cycles completed: " + cycleCount);
-        System.out.println("  Final state: " + currentState);
-        
-        VisualizationHelper.log("🚦 " + intersection + " offline");
+        System.out.println("Traffic Light " + getLocalName() + " terminating.");
     }
 }

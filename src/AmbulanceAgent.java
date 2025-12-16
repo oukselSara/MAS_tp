@@ -1,275 +1,151 @@
 import jade.core.Agent;
-import jade.core.behaviours.*;
+import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
-import jade.lang.acl.MessageTemplate;
-import jade.domain.DFService;
-import jade.domain.FIPAAgentManagement.*;
-import java.util.*;
+import jade.core.AID;
 
-public class AmbulanceAgent extends Agent {
-    private String equipmentLevel;
-    private String currentLocation;
-    private boolean available = true;
-    private String currentEmergency = null;
-    private Map<String, Integer> equipmentScores;
-    private List<String> equipment;
+public class AmbulanceAgent extends VehicleAgent {
+    
+    private boolean isEmergencyActive;
+    private int patientCriticalLevel;
+    private long emergencyStartTime;
     
     protected void setup() {
+        System.out.println("Ambulance " + getLocalName() + " is ready.");
+        
+        // Get starting position from arguments
         Object[] args = getArguments();
-        if (args != null && args.length > 0) {
-            equipmentLevel = (String) args[0];
-            currentLocation = (String) args[1];
+        if (args != null && args.length >= 4) {
+            positionX = Integer.parseInt(args[0].toString());
+            positionY = Integer.parseInt(args[1].toString());
+            destinationX = Integer.parseInt(args[2].toString());
+            destinationY = Integer.parseInt(args[3].toString());
         } else {
-            equipmentLevel = "basic";
-            currentLocation = "Station1";
+            positionX = 0;
+            positionY = 0;
+            destinationX = 10;
+            destinationY = 10;
         }
         
-        initializeEquipment();
+        currentSpeed = 2; // Ambulance is faster
+        shouldStop = false;
+        isEmergencyActive = false;
+        patientCriticalLevel = 5; // Scale 1-10
         
-        System.out.println("Ambulance " + getAID().getLocalName() + " ready.");
-        System.out.println("  Equipment Level: " + equipmentLevel);
-        System.out.println("  Equipment: " + equipment);
-        System.out.println("  Location: " + currentLocation);
+        // Add behavior to move
+        addBehaviour(new AmbulanceMoveBehaviour(this, 800));
         
-        // Update visualization
-        VisualizationHelper.updateAgent(getLocalName(), "ambulance", currentLocation, 
-            "Ready - " + equipmentLevel, available);
-        VisualizationHelper.log("🚑 " + getLocalName() + " ready at " + currentLocation + " (" + equipmentLevel + ")");
+        // Add behavior to receive messages
+        addBehaviour(new AmbulanceReceiveBehaviour());
         
-        // Register with DF
-        DFAgentDescription dfd = new DFAgentDescription();
-        dfd.setName(getAID());
-        ServiceDescription sd = new ServiceDescription();
-        sd.setType("ambulance");
-        sd.setName(equipmentLevel + "-ambulance");
-        dfd.addServices(sd);
-        try {
-            DFService.register(this, dfd);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        
-        addBehaviour(new RespondToEmergencies());
-        addBehaviour(new HandleAssignment());
-        addBehaviour(new ReceiveDestination());
-        addBehaviour(new UpdateVisualization(this, 2000));
+        // Trigger emergency after 3 seconds
+        addBehaviour(new EmergencyTriggerBehaviour(this, 3000));
     }
     
-    private void initializeEquipment() {
-        equipment = new ArrayList<>();
-        equipmentScores = new HashMap<>();
+    // Behavior to trigger emergency
+    private class EmergencyTriggerBehaviour extends jade.core.behaviours.OneShotBehaviour {
         
-        switch (equipmentLevel) {
-            case "basic":
-                equipment.add("First Aid Kit");
-                equipment.add("Oxygen");
-                equipment.add("Stretcher");
-                equipment.add("Basic Monitoring");
-                equipmentScores.put("trauma", 40);
-                equipmentScores.put("cardiac", 30);
-                equipmentScores.put("respiratory", 35);
-                equipmentScores.put("neurological", 25);
-                equipmentScores.put("general", 50);
-                break;
-                
-            case "advanced":
-                equipment.add("Advanced Life Support Equipment");
-                equipment.add("Defibrillator");
-                equipment.add("IV Medications");
-                equipment.add("Intubation Kit");
-                equipment.add("Advanced Monitoring");
-                equipment.add("Oxygen");
-                equipment.add("Stretcher");
-                equipmentScores.put("trauma", 70);
-                equipmentScores.put("cardiac", 85);
-                equipmentScores.put("respiratory", 80);
-                equipmentScores.put("neurological", 65);
-                equipmentScores.put("general", 75);
-                break;
-                
-            case "micu":
-                equipment.add("Full ICU Equipment");
-                equipment.add("Advanced Defibrillator");
-                equipment.add("Ventilator");
-                equipment.add("Complete Medication Suite");
-                equipment.add("Surgical Kit");
-                equipment.add("Blood Products");
-                equipment.add("Ultrasound");
-                equipment.add("Advanced Life Support");
-                equipment.add("Telemetry to Hospital");
-                equipmentScores.put("trauma", 95);
-                equipmentScores.put("cardiac", 100);
-                equipmentScores.put("respiratory", 95);
-                equipmentScores.put("neurological", 90);
-                equipmentScores.put("general", 90);
-                break;
+        public EmergencyTriggerBehaviour(Agent a, long delay) {
+            super(a);
+        }
+        
+        public void action() {
+            activateEmergency();
         }
     }
     
-    // Periodic visualization update
-    class UpdateVisualization extends TickerBehaviour {
-        public UpdateVisualization(Agent a, long period) {
+    // Activate emergency mode
+    private void activateEmergency() {
+        isEmergencyActive = true;
+        emergencyStartTime = System.currentTimeMillis();
+        currentSpeed = 3; // Go even faster
+        
+        System.out.println("\n*** EMERGENCY ACTIVATED by " + getLocalName() + " ***");
+        System.out.println("Patient critical level: " + patientCriticalLevel + "/10");
+        
+        // Send message to Control Center
+        ACLMessage message = new ACLMessage(ACLMessage.INFORM);
+        message.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
+        message.setContent("EMERGENCY_START:" + positionX + "," + positionY + ":" + destinationX + "," + destinationY);
+        send(message);
+    }
+    
+    // Behavior to move ambulance
+    private class AmbulanceMoveBehaviour extends TickerBehaviour {
+        
+        public AmbulanceMoveBehaviour(Agent a, long period) {
             super(a, period);
         }
         
-        public void onTick() {
-            String status = available ? "Available - " + equipmentLevel : "On Mission: " + currentEmergency;
-            VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
-                currentLocation, status, available);
-        }
-    }
-    
-    class RespondToEmergencies extends CyclicBehaviour {
-        public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchPerformative(ACLMessage.CFP),
-                MessageTemplate.MatchConversationId("ambulance-dispatch"));
-            ACLMessage msg = receive(mt);
-            
-            if (msg != null) {
-                if (available) {
-                    String[] parts = msg.getContent().split(":");
-                    String emergencyId = parts[1];
-                    String type = parts[2];
-                    String severity = parts[3];
-                    String location = parts[4];
-                    
-                    int score = calculateScore(type, severity, location);
-                    
-                    ACLMessage proposal = msg.createReply();
-                    proposal.setPerformative(ACLMessage.PROPOSE);
-                    proposal.setContent(emergencyId + ":" + score + ":" + equipmentLevel);
-                    send(proposal);
-                    
-                    System.out.println(getLocalName() + " proposing for " + emergencyId + 
-                                     " with score: " + score);
-                    VisualizationHelper.log("💭 " + getLocalName() + " proposing for " + emergencyId + " (score: " + score + ")");
+        protected void onTick() {
+            // Ambulance doesn't stop for normal red lights during emergency
+            if (!shouldStop || isEmergencyActive) {
+                // Move toward destination (fix: don't overshoot)
+                if (positionX < destinationX) {
+                    positionX = Math.min(positionX + currentSpeed, destinationX);
+                } else if (positionX > destinationX) {
+                    positionX = Math.max(positionX - currentSpeed, destinationX);
+                }
+                
+                if (positionY < destinationY) {
+                    positionY = Math.min(positionY + currentSpeed, destinationY);
+                } else if (positionY > destinationY) {
+                    positionY = Math.max(positionY - currentSpeed, destinationY);
+                }
+                
+                if (isEmergencyActive) {
+                    System.out.println(getLocalName() + " EMERGENCY at (" + positionX + "," + positionY + ")");
                 } else {
-                    ACLMessage refuse = msg.createReply();
-                    refuse.setPerformative(ACLMessage.REFUSE);
-                    refuse.setContent("BUSY");
-                    send(refuse);
+                    System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
                 }
-            } else {
-                block();
+                
+                // Check if reached hospital
+                if (positionX == destinationX && positionY == destinationY && isEmergencyActive) {
+                    completeEmergency();
+                }
             }
         }
     }
     
-    private int calculateScore(String type, String severity, String location) {
-        int baseScore = equipmentScores.getOrDefault(type, 50);
+    // Complete the emergency
+    private void completeEmergency() {
+        long emergencyDuration = (System.currentTimeMillis() - emergencyStartTime) / 1000;
+        isEmergencyActive = false;
         
-        if (severity.equals("critical")) {
-            baseScore += 20;
-        } else if (severity.equals("high")) {
-            baseScore += 10;
-        }
+        System.out.println("\n*** EMERGENCY COMPLETED by " + getLocalName() + " ***");
+        System.out.println("Response time: " + emergencyDuration + " seconds");
         
-        int distance = Math.abs(currentLocation.hashCode() - location.hashCode()) % 10;
-        int distanceScore = Math.max(0, 20 - distance * 2);
+        // Notify Control Center
+        ACLMessage message = new ACLMessage(ACLMessage.INFORM);
+        message.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
+        message.setContent("EMERGENCY_END:" + emergencyDuration);
+        send(message);
         
-        if (available) {
-            baseScore += 15;
-        }
-        
-        return Math.min(100, baseScore + distanceScore);
+        // Schedule next emergency after 5 seconds
+        addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 5000) {
+            protected void onWake() {
+                // Set new random destination
+                destinationX = (int)(Math.random() * 10);
+                destinationY = (int)(Math.random() * 10);
+                patientCriticalLevel = (int)(Math.random() * 5) + 5; // 5-10
+                activateEmergency();
+            }
+        });
     }
     
-    class HandleAssignment extends CyclicBehaviour {
+    // Behavior to receive messages
+    private class AmbulanceReceiveBehaviour extends jade.core.behaviours.CyclicBehaviour {
+        
         public void action() {
-            MessageTemplate mt = MessageTemplate.and(
-                MessageTemplate.MatchConversationId("ambulance-dispatch"),
-                MessageTemplate.or(
-                    MessageTemplate.MatchPerformative(ACLMessage.ACCEPT_PROPOSAL),
-                    MessageTemplate.MatchPerformative(ACLMessage.REJECT_PROPOSAL)
-                )
-            );
-            ACLMessage msg = receive(mt);
-            
-            if (msg != null) {
-                if (msg.getPerformative() == ACLMessage.ACCEPT_PROPOSAL) {
-                    String[] parts = msg.getContent().split(":");
-                    currentEmergency = parts[0];
-                    String targetLocation = parts[1];
-                    
-                    available = false;
-                    System.out.println("\n*** " + getLocalName() + " DISPATCHED ***");
-                    System.out.println("Emergency: " + currentEmergency);
-                    System.out.println("Equipment: " + equipmentLevel);
-                    System.out.println("Heading to: " + targetLocation);
-                    
-                    VisualizationHelper.log("🚨 " + getLocalName() + " DISPATCHED to " + targetLocation);
-                    VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
-                        currentLocation, "En route to " + targetLocation, false);
-                    
-                    // Simulate travel
-                    addBehaviour(new OneShotBehaviour() {
-                        public void action() {
-                            try {
-                                Thread.sleep(3000);
-                                System.out.println(getLocalName() + " arrived at scene: " + targetLocation);
-                                currentLocation = targetLocation;
-                                
-                                VisualizationHelper.log("✓ " + getLocalName() + " arrived at scene");
-                                VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
-                                    currentLocation, "At scene: " + currentEmergency, false);
-                            } catch (Exception e) {}
-                        }
-                    });
+            ACLMessage message = receive();
+            if (message != null) {
+                String content = message.getContent();
+                
+                if (content.equals("PRIORITY_GRANTED")) {
+                    System.out.println(getLocalName() + " received priority access");
                 }
             } else {
                 block();
             }
         }
-    }
-    
-    class ReceiveDestination extends CyclicBehaviour {
-        public void action() {
-            MessageTemplate mt = MessageTemplate.MatchPerformative(ACLMessage.INFORM);
-            ACLMessage msg = receive(mt);
-            
-            if (msg != null) {
-                String content = msg.getContent();
-                if (content.startsWith("DESTINATION:")) {
-                    String hospital = content.split(":")[1];
-                    
-                    System.out.println(getLocalName() + " transporting patient to " + hospital);
-                    VisualizationHelper.log("🏥 " + getLocalName() + " transporting patient to " + hospital);
-                    VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
-                        currentLocation, "Transporting to " + hospital, false);
-                    
-                    // Simulate transport
-                    addBehaviour(new OneShotBehaviour() {
-                        public void action() {
-                            try {
-                                Thread.sleep(4000);
-                                System.out.println(getLocalName() + " arrived at " + hospital);
-                                System.out.println("Patient delivered successfully!");
-                                
-                                available = true;
-                                currentEmergency = null;
-                                currentLocation = "Station1"; // Return to station
-                                
-                                System.out.println(getLocalName() + " returning to station and available again\n");
-                                
-                                VisualizationHelper.log("✓ " + getLocalName() + " patient delivered, returning to base");
-                                VisualizationHelper.updateAgent(getLocalName(), "ambulance", 
-                                    currentLocation, "Available at station", true);
-                            } catch (Exception e) {}
-                        }
-                    });
-                }
-            } else {
-                block();
-            }
-        }
-    }
-    
-    protected void takeDown() {
-        try {
-            DFService.deregister(this);
-        } catch (Exception e) {}
-        System.out.println("Ambulance " + getAID().getLocalName() + " terminating.");
-        VisualizationHelper.log("🚑 " + getLocalName() + " offline");
     }
 }
