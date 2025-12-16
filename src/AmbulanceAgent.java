@@ -93,7 +93,7 @@ public class AmbulanceAgent extends VehicleAgent {
                 }
                 
                 if (isEmergencyActive) {
-                    System.out.println("🚑 " + getLocalName() + " EMERGENCY at (" + positionX + "," + positionY + ")");
+                    System.out.println(getLocalName() + " EMERGENCY at (" + positionX + "," + positionY + ")");
                 } else {
                     System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
                 }
