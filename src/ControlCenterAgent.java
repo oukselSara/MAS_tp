@@ -8,15 +8,19 @@ public class ControlCenterAgent extends Agent {
     private int totalEmergencies;
     private ArrayList<Long> responseTimes;
     private boolean emergencyInProgress;
+    private int totalVehicles;
+    private int vehiclesArrived;
     
     protected void setup() {
-        
+        System.out.println("\n===========================================");
         System.out.println("Traffic Control Center is ONLINE");
-        
+        System.out.println("===========================================\n");
         
         totalEmergencies = 0;
         responseTimes = new ArrayList<Long>();
         emergencyInProgress = false;
+        totalVehicles = 4; 
+        vehiclesArrived = 0;
         
         
         addBehaviour(new ReceiveEmergencyBehaviour());
@@ -36,6 +40,8 @@ public class ControlCenterAgent extends Agent {
                     handleEmergencyEnd(content);
                 } else if (content.startsWith("PRIORITY_ACTIVE")) {
                     System.out.println("Control Center: Priority confirmed at intersection");
+                } else if (content.equals("VEHICLE_ARRIVED")) {
+                    handleVehicleArrival();
                 }
             } else {
                 block();
@@ -52,8 +58,10 @@ public class ControlCenterAgent extends Agent {
         
         emergencyInProgress = true;
         totalEmergencies++;
-
-        System.out.println("**** EMERGENCY ALERT RECEIVED ****             ");
+        
+        System.out.println("\n╔════════════════════════════════════════╗");
+        System.out.println("║  EMERGENCY ALERT RECEIVED              ║");
+        System.out.println("╚════════════════════════════════════════╝");
         
         
         
@@ -61,7 +69,7 @@ public class ControlCenterAgent extends Agent {
         if (parts.length >= 3) {
             String startPos = parts[1];
             String endPos = parts[2];
-            System.out.println("Route: " + startPos + " to " + endPos);
+            System.out.println("Route: " + startPos + " → " + endPos);
         }
         
         
@@ -81,7 +89,9 @@ public class ControlCenterAgent extends Agent {
             long responseTime = Long.parseLong(parts[1]);
             responseTimes.add(responseTime);
             
-            System.out.println("**** EMERGENCY COMPLETED ****");         
+            System.out.println("\n╔════════════════════════════════════════╗");
+            System.out.println("║  EMERGENCY COMPLETED                   ║");
+            System.out.println("╚════════════════════════════════════════╝");
             System.out.println("Response time: " + responseTime + " seconds");
         }
         
@@ -124,9 +134,9 @@ public class ControlCenterAgent extends Agent {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
         
         
-        message.addReceiver(new AID("Vehicle 1", AID.ISLOCALNAME));
-        message.addReceiver(new AID("Vehicle 2", AID.ISLOCALNAME));
-        message.addReceiver(new AID("Vehicle 3", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle1", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle2", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle3", AID.ISLOCALNAME));
         message.setContent("PULL_OVER");
         send(message);
         
@@ -136,9 +146,9 @@ public class ControlCenterAgent extends Agent {
     
     private void notifyVehiclesToResume() {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
-        message.addReceiver(new AID("Vehicle 1", AID.ISLOCALNAME));
-        message.addReceiver(new AID("Vehicle 2", AID.ISLOCALNAME));
-        message.addReceiver(new AID("Vehicle 3", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle1", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle2", AID.ISLOCALNAME));
+        message.addReceiver(new AID("Vehicle3", AID.ISLOCALNAME));
         message.setContent("CLEAR");
         send(message);
         
@@ -158,7 +168,50 @@ public class ControlCenterAgent extends Agent {
             long average = total / responseTimes.size();
             System.out.println("Average response time: " + average + " seconds");
         }
+        System.out.println("Vehicles arrived: " + vehiclesArrived + "/" + totalVehicles);
         System.out.println("------------------------------------------\n");
+        
+        
+        checkSimulationComplete();
+    }
+    
+    
+    private void handleVehicleArrival() {
+        vehiclesArrived++;
+        System.out.println("Control Center: Vehicle arrived (" + vehiclesArrived + "/" + totalVehicles + ")");
+        checkSimulationComplete();
+    }
+    
+    
+    private void checkSimulationComplete() {
+        if (vehiclesArrived >= totalVehicles && totalEmergencies >= 2 && !emergencyInProgress) {
+            System.out.println("\n╔════════════════════════════════════════╗");
+            System.out.println("║  SIMULATION COMPLETE                   ║");
+            System.out.println("╚════════════════════════════════════════╝");
+            System.out.println("All vehicles reached destinations.");
+            System.out.println("All emergencies handled.");
+            displayFinalStatistics();
+        }
+    }
+    
+    
+    private void displayFinalStatistics() {
+        System.out.println("\n========== FINAL STATISTICS ==========");
+        System.out.println("Total emergencies: " + totalEmergencies);
+        
+        if (responseTimes.size() > 0) {
+            long total = 0;
+            for (Long time : responseTimes) {
+                total += time;
+            }
+            long average = total / responseTimes.size();
+            System.out.println("Average response time: " + average + " seconds");
+            System.out.println("All response times: " + responseTimes);
+        }
+        
+        System.out.println("Total vehicles: " + totalVehicles);
+        System.out.println("Vehicles arrived: " + vehiclesArrived);
+        System.out.println("======================================\n");
     }
     
     protected void takeDown() {
