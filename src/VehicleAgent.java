@@ -14,7 +14,7 @@ public class VehicleAgent extends Agent {
     protected void setup() {
         System.out.println("Vehicle " + getLocalName() + " is ready.");
         
-        // Get starting position from arguments
+        
         Object[] args = getArguments();
         if (args != null && args.length >= 4) {
             positionX = Integer.parseInt(args[0].toString());
@@ -22,7 +22,7 @@ public class VehicleAgent extends Agent {
             destinationX = Integer.parseInt(args[2].toString());
             destinationY = Integer.parseInt(args[3].toString());
         } else {
-            // Default values
+            
             positionX = 0;
             positionY = 0;
             destinationX = 10;
@@ -32,14 +32,14 @@ public class VehicleAgent extends Agent {
         currentSpeed = 1;
         shouldStop = false;
         
-        // Add behavior to move
+        
         addBehaviour(new MoveBehaviour(this, 1000));
         
-        // Add behavior to receive messages
+        
         addBehaviour(new ReceiveMessageBehaviour());
     }
     
-    // Behavior to move the vehicle
+    
     private class MoveBehaviour extends TickerBehaviour {
         
         public MoveBehaviour(Agent a, long period) {
@@ -48,7 +48,7 @@ public class VehicleAgent extends Agent {
         
         protected void onTick() {
             if (!shouldStop) {
-                // Simple movement toward destination (fix: don't overshoot)
+                
                 if (positionX < destinationX) {
                     positionX = Math.min(positionX + currentSpeed, destinationX);
                 } else if (positionX > destinationX) {
@@ -63,7 +63,7 @@ public class VehicleAgent extends Agent {
                 
                 System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
                 
-                // Check if reached destination
+                
                 if (positionX == destinationX && positionY == destinationY) {
                     System.out.println(getLocalName() + " reached destination!");
                 }
@@ -73,7 +73,7 @@ public class VehicleAgent extends Agent {
         }
     }
     
-    // Behavior to receive messages
+    
     private class ReceiveMessageBehaviour extends jade.core.behaviours.CyclicBehaviour {
         
         public void action() {

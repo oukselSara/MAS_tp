@@ -8,20 +8,19 @@ public class MainLauncher {
     
     public static void main(String[] args) {
         try {
-            // Get the JADE runtime
+            
             Runtime runtime = Runtime.instance();
             
-            // Create a profile
             Profile profile = new ProfileImpl();
             profile.setParameter(Profile.MAIN_HOST, "localhost");
-            profile.setParameter(Profile.GUI, "true"); // Show JADE GUI
+            profile.setParameter(Profile.GUI, "true"); 
             
-            // Create the main container
+            
             AgentContainer mainContainer = runtime.createMainContainer(profile);
             
             System.out.println("Starting Traffic Management System...\n");
             
-            // Create Control Center
+            
             AgentController controlCenter = mainContainer.createNewAgent(
                 "ControlCenter", 
                 "ControlCenterAgent", 
@@ -31,7 +30,7 @@ public class MainLauncher {
             
             Thread.sleep(500);
             
-            // Create Traffic Lights at different intersections
+            
             AgentController light1 = mainContainer.createNewAgent(
                 "TrafficLight1", 
                 "TrafficLightAgent", 
@@ -48,8 +47,8 @@ public class MainLauncher {
             
             Thread.sleep(500);
             
-            // Create regular vehicles
-            // Arguments: startX, startY, destinationX, destinationY
+            
+            
             AgentController vehicle1 = mainContainer.createNewAgent(
                 "Vehicle1", 
                 "VehicleAgent", 
@@ -73,8 +72,8 @@ public class MainLauncher {
             
             Thread.sleep(500);
             
-            // Create ambulance (will trigger emergency after 3 seconds)
-            // Arguments: startX, startY, hospitalX, hospitalY
+            
+            
             AgentController ambulance = mainContainer.createNewAgent(
                 "Ambulance1", 
                 "AmbulanceAgent", 

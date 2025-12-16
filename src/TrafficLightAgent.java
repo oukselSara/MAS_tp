@@ -14,7 +14,7 @@ public class TrafficLightAgent extends Agent {
     protected void setup() {
         System.out.println("Traffic Light " + getLocalName() + " is ready.");
         
-        // Get position from arguments
+        
         Object[] args = getArguments();
         if (args != null && args.length >= 2) {
             intersectionX = Integer.parseInt(args[0].toString());
@@ -30,14 +30,14 @@ public class TrafficLightAgent extends Agent {
         
         System.out.println("Traffic Light at intersection (" + intersectionX + "," + intersectionY + ")");
         
-        // Add behavior to cycle colors
+        
         addBehaviour(new ColorCycleBehaviour(this, 1000));
         
-        // Add behavior to receive messages
+        
         addBehaviour(new ReceiveCommandBehaviour());
     }
     
-    // Behavior to cycle through colors
+    
     private class ColorCycleBehaviour extends TickerBehaviour {
         
         public ColorCycleBehaviour(Agent a, long period) {
@@ -62,7 +62,7 @@ public class TrafficLightAgent extends Agent {
                     System.out.println(getLocalName() + " is now GREEN");
                 }
             } else {
-                // Stay green during priority mode
+                
                 if (!currentColor.equals("GREEN")) {
                     currentColor = "GREEN";
                     System.out.println(getLocalName() + " PRIORITY MODE - GREEN");
@@ -71,7 +71,7 @@ public class TrafficLightAgent extends Agent {
         }
     }
     
-    // Behavior to receive commands
+    
     private class ReceiveCommandBehaviour extends jade.core.behaviours.CyclicBehaviour {
         
         public void action() {
@@ -90,20 +90,20 @@ public class TrafficLightAgent extends Agent {
         }
     }
     
-    // Activate priority mode for emergency vehicles
+    
     private void activatePriorityMode() {
         priorityMode = true;
         currentColor = "GREEN";
         System.out.println("*** " + getLocalName() + " PRIORITY MODE ACTIVATED ***");
         
-        // Send confirmation to Control Center
+        
         ACLMessage response = new ACLMessage(ACLMessage.INFORM);
         response.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
         response.setContent("PRIORITY_ACTIVE:" + intersectionX + "," + intersectionY);
         send(response);
     }
     
-    // Deactivate priority mode
+    
     private void deactivatePriorityMode() {
         priorityMode = false;
         colorTimer = 0;
