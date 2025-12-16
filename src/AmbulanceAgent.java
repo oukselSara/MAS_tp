@@ -8,10 +8,10 @@ public class AmbulanceAgent extends VehicleAgent {
     private boolean isEmergencyActive;
     private int patientCriticalLevel;
     private long emergencyStartTime;
+    private int emergencyCount;
     
     protected void setup() {
         System.out.println("Ambulance " + getLocalName() + " is ready.");
-        
         
         Object[] args = getArguments();
         if (args != null && args.length >= 4) {
@@ -28,19 +28,15 @@ public class AmbulanceAgent extends VehicleAgent {
         
         currentSpeed = 2; 
         shouldStop = false;
+        hasArrived = false;
         isEmergencyActive = false;
-        patientCriticalLevel = 5; 
-        
+        patientCriticalLevel = 5;
+        emergencyCount = 0;
         
         addBehaviour(new AmbulanceMoveBehaviour(this, 800));
-        
-        
         addBehaviour(new AmbulanceReceiveBehaviour());
-        
-        
         addBehaviour(new EmergencyTriggerBehaviour(this, 3000));
     }
-    
     
     private class EmergencyTriggerBehaviour extends jade.core.behaviours.OneShotBehaviour {
         
@@ -53,22 +49,21 @@ public class AmbulanceAgent extends VehicleAgent {
         }
     }
     
-    
     private void activateEmergency() {
         isEmergencyActive = true;
+        hasArrived = false;
         emergencyStartTime = System.currentTimeMillis();
-        currentSpeed = 3; 
+        currentSpeed = 3;
+        emergencyCount++;
         
         System.out.println("\n*** EMERGENCY ACTIVATED by " + getLocalName() + " ***");
         System.out.println("Patient critical level: " + patientCriticalLevel + "/10");
-        
         
         ACLMessage message = new ACLMessage(ACLMessage.INFORM);
         message.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
         message.setContent("EMERGENCY_START:" + positionX + "," + positionY + ":" + destinationX + "," + destinationY);
         send(message);
     }
-    
     
     private class AmbulanceMoveBehaviour extends TickerBehaviour {
         
@@ -77,9 +72,11 @@ public class AmbulanceAgent extends VehicleAgent {
         }
         
         protected void onTick() {
+            if (hasArrived && !isEmergencyActive) {
+                return;
+            }
             
             if (!shouldStop || isEmergencyActive) {
-                
                 if (positionX < destinationX) {
                     positionX = Math.min(positionX + currentSpeed, destinationX);
                 } else if (positionX > destinationX) {
@@ -98,14 +95,12 @@ public class AmbulanceAgent extends VehicleAgent {
                     System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
                 }
                 
-                
                 if (positionX == destinationX && positionY == destinationY && isEmergencyActive) {
                     completeEmergency();
                 }
             }
         }
     }
-    
     
     private void completeEmergency() {
         long emergencyDuration = (System.currentTimeMillis() - emergencyStartTime) / 1000;
@@ -114,24 +109,30 @@ public class AmbulanceAgent extends VehicleAgent {
         System.out.println("\n*** EMERGENCY COMPLETED by " + getLocalName() + " ***");
         System.out.println("Response time: " + emergencyDuration + " seconds");
         
-        
         ACLMessage message = new ACLMessage(ACLMessage.INFORM);
         message.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
         message.setContent("EMERGENCY_END:" + emergencyDuration);
         send(message);
         
-        
-        addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 5000) {
-            protected void onWake() {
-                
-                destinationX = (int)(Math.random() * 10);
-                destinationY = (int)(Math.random() * 10);
-                patientCriticalLevel = (int)(Math.random() * 5) + 5; 
-                activateEmergency();
-            }
-        });
+        if (emergencyCount >= 2) {
+            hasArrived = true;
+            System.out.println(getLocalName() + " completed all emergencies and STOPPED!");
+            
+            ACLMessage arrivalMsg = new ACLMessage(ACLMessage.INFORM);
+            arrivalMsg.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
+            arrivalMsg.setContent("VEHICLE_ARRIVED");
+            send(arrivalMsg);
+        } else {
+            addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 5000) {
+                protected void onWake() {
+                    destinationX = (int)(Math.random() * 10);
+                    destinationY = (int)(Math.random() * 10);
+                    patientCriticalLevel = (int)(Math.random() * 5) + 5;
+                    activateEmergency();
+                }
+            });
+        }
     }
-    
     
     private class AmbulanceReceiveBehaviour extends jade.core.behaviours.CyclicBehaviour {
         

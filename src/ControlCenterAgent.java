@@ -1,6 +1,7 @@
 import jade.core.Agent;
 import jade.core.AID;
 import jade.lang.acl.ACLMessage;
+import jade.wrapper.AgentContainer;
 import java.util.ArrayList;
 
 public class ControlCenterAgent extends Agent {
@@ -22,10 +23,8 @@ public class ControlCenterAgent extends Agent {
         totalVehicles = 4; 
         vehiclesArrived = 0;
         
-        
         addBehaviour(new ReceiveEmergencyBehaviour());
     }
-    
     
     private class ReceiveEmergencyBehaviour extends jade.core.behaviours.CyclicBehaviour {
         
@@ -49,7 +48,6 @@ public class ControlCenterAgent extends Agent {
         }
     }
     
-    
     private void handleEmergencyStart(String messageContent) {
         if (emergencyInProgress) {
             System.out.println("Control Center: Another emergency already in progress");
@@ -59,57 +57,42 @@ public class ControlCenterAgent extends Agent {
         emergencyInProgress = true;
         totalEmergencies++;
         
-        System.out.println("\n╔════════════════════════════════════════╗");
-        System.out.println("║  EMERGENCY ALERT RECEIVED              ║");
-        System.out.println("╚════════════════════════════════════════╝");
-        
-        
+        System.out.println("\n===========================================");
+        System.out.println("  EMERGENCY ALERT RECEIVED              ");
+        System.out.println("===========================================");
         
         String[] parts = messageContent.split(":");
         if (parts.length >= 3) {
             String startPos = parts[1];
             String endPos = parts[2];
-            System.out.println("Route: " + startPos + " → " + endPos);
+            System.out.println("Route: " + startPos + " -> " + endPos);
         }
         
-        
         giveTrafficLightsPriority();
-        
-        
         notifyVehiclesToPullOver();
     }
     
-    
     private void handleEmergencyEnd(String messageContent) {
         emergencyInProgress = false;
-        
         
         String[] parts = messageContent.split(":");
         if (parts.length >= 2) {
             long responseTime = Long.parseLong(parts[1]);
             responseTimes.add(responseTime);
             
-            System.out.println("\n╔════════════════════════════════════════╗");
-            System.out.println("║  EMERGENCY COMPLETED                   ║");
-            System.out.println("╚════════════════════════════════════════╝");
+            System.out.println("\n===========================================");
+            System.out.println("  EMERGENCY COMPLETED                   ");
+            System.out.println("===========================================");
             System.out.println("Response time: " + responseTime + " seconds");
         }
         
-        
         clearTrafficLightsPriority();
-        
-        
         notifyVehiclesToResume();
-        
-        
         displayStatistics();
     }
     
-    
     private void giveTrafficLightsPriority() {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
-        
-        
         message.addReceiver(new AID("TrafficLight1", AID.ISLOCALNAME));
         message.addReceiver(new AID("TrafficLight2", AID.ISLOCALNAME));
         message.setContent("GIVE_PRIORITY");
@@ -117,7 +100,6 @@ public class ControlCenterAgent extends Agent {
         
         System.out.println("Control Center: Priority granted to traffic lights");
     }
-    
     
     private void clearTrafficLightsPriority() {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
@@ -129,11 +111,8 @@ public class ControlCenterAgent extends Agent {
         System.out.println("Control Center: Priority cleared from traffic lights");
     }
     
-    
     private void notifyVehiclesToPullOver() {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
-        
-        
         message.addReceiver(new AID("Vehicle1", AID.ISLOCALNAME));
         message.addReceiver(new AID("Vehicle2", AID.ISLOCALNAME));
         message.addReceiver(new AID("Vehicle3", AID.ISLOCALNAME));
@@ -142,7 +121,6 @@ public class ControlCenterAgent extends Agent {
         
         System.out.println("Control Center: Vehicles instructed to pull over");
     }
-    
     
     private void notifyVehiclesToResume() {
         ACLMessage message = new ACLMessage(ACLMessage.REQUEST);
@@ -154,7 +132,6 @@ public class ControlCenterAgent extends Agent {
         
         System.out.println("Control Center: Vehicles instructed to resume");
     }
-    
     
     private void displayStatistics() {
         System.out.println("\n--- TRAFFIC CONTROL CENTER STATISTICS ---");
@@ -171,10 +148,8 @@ public class ControlCenterAgent extends Agent {
         System.out.println("Vehicles arrived: " + vehiclesArrived + "/" + totalVehicles);
         System.out.println("------------------------------------------\n");
         
-        
         checkSimulationComplete();
     }
-    
     
     private void handleVehicleArrival() {
         vehiclesArrived++;
@@ -182,18 +157,17 @@ public class ControlCenterAgent extends Agent {
         checkSimulationComplete();
     }
     
-    
     private void checkSimulationComplete() {
         if (vehiclesArrived >= totalVehicles && totalEmergencies >= 2 && !emergencyInProgress) {
-            System.out.println("\n╔════════════════════════════════════════╗");
-            System.out.println("║  SIMULATION COMPLETE                   ║");
-            System.out.println("╚════════════════════════════════════════╝");
+            System.out.println("\n===========================================");
+            System.out.println("  SIMULATION COMPLETE                   ");
+            System.out.println("===========================================");
             System.out.println("All vehicles reached destinations.");
             System.out.println("All emergencies handled.");
             displayFinalStatistics();
+            shutdownSystem();
         }
     }
-    
     
     private void displayFinalStatistics() {
         System.out.println("\n========== FINAL STATISTICS ==========");
@@ -212,6 +186,21 @@ public class ControlCenterAgent extends Agent {
         System.out.println("Total vehicles: " + totalVehicles);
         System.out.println("Vehicles arrived: " + vehiclesArrived);
         System.out.println("======================================\n");
+    }
+    
+    private void shutdownSystem() {
+        addBehaviour(new jade.core.behaviours.WakerBehaviour(this, 2000) {
+            protected void onWake() {
+                System.out.println("\nShutting down all agents...");
+                
+                try {
+                    AgentContainer container = getContainerController();
+                    container.kill();
+                } catch (Exception e) {
+                    System.out.println("Error during shutdown: " + e.getMessage());
+                }
+            }
+        });
     }
     
     protected void takeDown() {

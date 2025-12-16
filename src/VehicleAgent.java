@@ -1,6 +1,7 @@
 import jade.core.Agent;
 import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
+import jade.core.AID;
 
 public class VehicleAgent extends Agent {
     
@@ -10,10 +11,10 @@ public class VehicleAgent extends Agent {
     protected int destinationY;
     protected int currentSpeed;
     protected boolean shouldStop;
+    protected boolean hasArrived;
     
     protected void setup() {
         System.out.println("Vehicle " + getLocalName() + " is ready.");
-        
         
         Object[] args = getArguments();
         if (args != null && args.length >= 4) {
@@ -22,7 +23,6 @@ public class VehicleAgent extends Agent {
             destinationX = Integer.parseInt(args[2].toString());
             destinationY = Integer.parseInt(args[3].toString());
         } else {
-            
             positionX = 0;
             positionY = 0;
             destinationX = 10;
@@ -31,14 +31,11 @@ public class VehicleAgent extends Agent {
         
         currentSpeed = 1;
         shouldStop = false;
-        
+        hasArrived = false;
         
         addBehaviour(new MoveBehaviour(this, 1000));
-        
-        
         addBehaviour(new ReceiveMessageBehaviour());
     }
-    
     
     private class MoveBehaviour extends TickerBehaviour {
         
@@ -47,8 +44,11 @@ public class VehicleAgent extends Agent {
         }
         
         protected void onTick() {
+            if (hasArrived) {
+                return;
+            }
+            
             if (!shouldStop) {
-                
                 if (positionX < destinationX) {
                     positionX = Math.min(positionX + currentSpeed, destinationX);
                 } else if (positionX > destinationX) {
@@ -63,16 +63,20 @@ public class VehicleAgent extends Agent {
                 
                 System.out.println(getLocalName() + " at position (" + positionX + "," + positionY + ")");
                 
-                
                 if (positionX == destinationX && positionY == destinationY) {
-                    System.out.println(getLocalName() + " reached destination!");
+                    hasArrived = true;
+                    System.out.println(getLocalName() + " reached destination and STOPPED!");
+                    
+                    ACLMessage arrivalMsg = new ACLMessage(ACLMessage.INFORM);
+                    arrivalMsg.addReceiver(new AID("ControlCenter", AID.ISLOCALNAME));
+                    arrivalMsg.setContent("VEHICLE_ARRIVED");
+                    send(arrivalMsg);
                 }
             } else {
                 System.out.println(getLocalName() + " is stopped (waiting)");
             }
         }
     }
-    
     
     private class ReceiveMessageBehaviour extends jade.core.behaviours.CyclicBehaviour {
         
@@ -82,17 +86,25 @@ public class VehicleAgent extends Agent {
                 String content = message.getContent();
                 
                 if (content.equals("PULL_OVER")) {
-                    shouldStop = true;
-                    System.out.println(getLocalName() + " pulling over for emergency vehicle");
+                    if (!hasArrived) {
+                        shouldStop = true;
+                        System.out.println(getLocalName() + " pulling over for emergency vehicle");
+                    }
                 } else if (content.equals("CLEAR")) {
-                    shouldStop = false;
-                    System.out.println(getLocalName() + " resuming movement");
+                    if (!hasArrived) {
+                        shouldStop = false;
+                        System.out.println(getLocalName() + " resuming movement");
+                    }
                 } else if (content.startsWith("RED_LIGHT")) {
-                    shouldStop = true;
-                    System.out.println(getLocalName() + " stopping at red light");
+                    if (!hasArrived) {
+                        shouldStop = true;
+                        System.out.println(getLocalName() + " stopping at red light");
+                    }
                 } else if (content.startsWith("GREEN_LIGHT")) {
-                    shouldStop = false;
-                    System.out.println(getLocalName() + " can go (green light)");
+                    if (!hasArrived) {
+                        shouldStop = false;
+                        System.out.println(getLocalName() + " can go (green light)");
+                    }
                 }
             } else {
                 block();
